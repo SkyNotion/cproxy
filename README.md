@@ -1,3 +1,7 @@
 ### CPROXY
 
 A mini http (socks coming later) proxy written `c`, This was written to be deployed on a Linux Container (podman pod or docker container). 
+
+It would be optimized later
+
+NOTE: Would get ET(edge trigged) to work later
