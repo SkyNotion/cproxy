@@ -13,13 +13,13 @@ inline void send_http_bad_request(int fd){
     send(fd, HTTP_RESPONSE_BAD_REQUEST, strlen(HTTP_RESPONSE_BAD_REQUEST), MSG_NOSIGNAL);
 }
 
-inline int parse_http_request_path(cproxy_http_request_t* req){
+inline int parse_http_request_path(cproxy_request_t* req){
     fprintf(cproxy_output, "Entering parse_http_request_path()\n");
     parsed = start_pos = 0;
-    if(strcmp(req->method, HTTP_REQUEST_CONNECT) == 0){
-        req->path[0] = DELIMETER_FORWARDSLASH;
-        req->path[1] = '\0';
-        req->request[++rpos] = DELIMETER_FORWARDSLASH;
+    if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) == 0){
+        req->http.path[0] = DELIMETER_FORWARDSLASH;
+        req->http.path[1] = '\0';
+        req->http.request[++rpos] = DELIMETER_FORWARDSLASH;
         do { inc++; if(buffer[inc] == DELIMETER_SPACE){ parsed++; return 0; }}while(inc < recv_sz);
         return -1;
     }
@@ -32,13 +32,13 @@ inline int parse_http_request_path(cproxy_http_request_t* req){
             case DELIMETER_SPACE:
                 byte_count = inc - start_pos;
                 if(byte_count > 255){ return -1; }
-                memcpy(req->path, &buffer[start_pos], byte_count);
-                req->path[byte_count] = '\0';
+                memcpy(req->http.path, &buffer[start_pos], byte_count);
+                req->http.path[byte_count] = '\0';
 
-                if(strcmp(req->method, HTTP_REQUEST_CONNECT) != 0){
-                    memcpy(&req->request[++rpos], &buffer[start_pos], byte_count);
+                if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) != 0){
+                    memcpy(&req->http.request[++rpos], &buffer[start_pos], byte_count);
                     rpos += byte_count;
-                    memcpy(&req->request[rpos], HTTP_1_1_SUFFIX, strlen(HTTP_1_1_SUFFIX));
+                    memcpy(&req->http.request[rpos], HTTP_1_1_SUFFIX, strlen(HTTP_1_1_SUFFIX));
                     rpos += strlen(HTTP_1_1_SUFFIX);
                 }
 
@@ -51,23 +51,23 @@ inline int parse_http_request_path(cproxy_http_request_t* req){
     return -1;
 }
 
-inline int parse_http_request_string(cproxy_http_request_t* req){
+inline int parse_http_request_string(cproxy_request_t* req){
     fprintf(cproxy_output, "Entering parse_http_request_string()\n");
-    memset(req->request, 0, sizeof(req->request)/sizeof(char));
+    memset(req->http.request, 0, sizeof(req->http.request)/sizeof(char));
     rpos = parsed = start_pos = 0;
     do {
         switch(buffer[inc]){
             case DELIMETER_SPACE:
                 byte_count = rpos = inc++ - start_pos;
                 if(byte_count > 7){ return -1; }
-                memcpy(req->method, &buffer[start_pos], byte_count);
-                req->method[byte_count] = '\0';
-                if(strcmp(req->method, HTTP_REQUEST_CONNECT) != 0){
-                    memcpy(req->request, &buffer[start_pos], byte_count);
-                    req->request[byte_count] = DELIMETER_SPACE;
+                memcpy(req->http.method, &buffer[start_pos], byte_count);
+                req->http.method[byte_count] = '\0';
+                if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) != 0){
+                    memcpy(req->http.request, &buffer[start_pos], byte_count);
+                    req->http.request[byte_count] = DELIMETER_SPACE;
                 }
                 if(parse_http_request_path(req) < 0){ return -1; }
-                if(req->path[0] != DELIMETER_FORWARDSLASH){ return -1; }
+                if(req->http.path[0] != DELIMETER_FORWARDSLASH){ return -1; }
                 break;
             case DELIMETER_LF:
                 if(buffer[inc++ - 1] != DELIMETER_CR || !parsed){ return -1; }
@@ -79,7 +79,7 @@ inline int parse_http_request_string(cproxy_http_request_t* req){
     return -1;
 }
 
-inline int parse_http_request_headers(cproxy_http_request_t* req){
+inline int parse_http_request_headers(cproxy_request_t* req){
     fprintf(cproxy_output, "Entering parse_http_request_headers()\n");
     memset(http_header_buffer, 0, sizeof(http_header_buffer)/sizeof(char));
     memset(req->host, 0, sizeof(req->host)/sizeof(char));
@@ -102,16 +102,16 @@ inline int parse_http_request_headers(cproxy_http_request_t* req){
                         req->port[strlen(HTTP_PORT_80)] = '\0';
                     }
 
-                    if(strcmp(req->method, HTTP_REQUEST_CONNECT) != 0){
-                        memcpy(&req->request[rpos], http_header_buffer, strlen(http_header_buffer));
+                    if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) != 0){
+                        memcpy(&req->http.request[rpos], http_header_buffer, strlen(http_header_buffer));
                         rpos += strlen(http_header_buffer);
-                        req->request[rpos++] = DELIMETER_COLON;
-                        req->request[rpos++] = DELIMETER_SPACE;
-                        memcpy(&req->request[rpos], req->host, strlen(req->host));
+                        req->http.request[rpos++] = DELIMETER_COLON;
+                        req->http.request[rpos++] = DELIMETER_SPACE;
+                        memcpy(&req->http.request[rpos], req->host, strlen(req->host));
                         rpos += strlen(req->host);
-                        memcpy(&req->request[rpos], HTTP_SUFFIX, strlen(HTTP_SUFFIX));
+                        memcpy(&req->http.request[rpos], HTTP_SUFFIX, strlen(HTTP_SUFFIX));
                         rpos += strlen(HTTP_SUFFIX);
-                        req->request[rpos] = '\0';
+                        req->http.request[rpos] = '\0';
                     }
 
                     memset(http_header_buffer, 0, sizeof(http_header_buffer)/sizeof(char));
@@ -145,7 +145,7 @@ inline int parse_http_request_headers(cproxy_http_request_t* req){
     return 0;
 }
 
-int parse_http_request(int fd, cproxy_http_request_t* req){
+int parse_http_request(int fd, cproxy_request_t* req){
     fprintf(cproxy_output, "Entering parse_http_request()\n");
     crlf_count = 0;
     do {

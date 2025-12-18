@@ -14,6 +14,7 @@
 #include "common.h"
 #include "http.h"
 #include "mempool.h"
+#include "request.h"
 
 #define MAX_EVENTS 8
 

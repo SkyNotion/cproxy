@@ -1,15 +1,17 @@
 #include "cproxy.h"
 
+static int t_conn = 0;
+
 static const char* HTTP_RESPONSE_CONN_ESTABLISHED = "HTTP/1.1 200 Connection established\r\n\r\n";
 
-static int sock_fd, epoll_fd, conn_fd, num_conn, fd_flags, evt, num_evs;
+static int sock_fd, epoll_fd, conn_fd, num_conn = 0, fd_flags, evt, num_evs;
 static struct epoll_event ev, events[MAX_EVENTS];
 static memory_pool_t* memory_pool = NULL;
 
 static uint8_t* type;
 static conn_data_t* client_conn;
 static target_conn_data_t* target_conn;
-static cproxy_http_request_t* req;
+static cproxy_request_t* req;
 
 static struct addrinfo *conn_addrinfo, 
                         conn_addrinfo_hint;
@@ -67,6 +69,7 @@ void close_conn(uint8_t type){
         client_conn = NULL;
         num_conn--;
     }
+    t_conn--;
 }
 
 int acquire_conn(){
@@ -103,7 +106,7 @@ int acquire_conn(){
 void send_request(){
     fprintf(cproxy_output, "Attempting send_request()\n");
     errno = 0;
-    send(target_conn->fd, req->request, strlen(req->request), MSG_NOSIGNAL);
+    send(target_conn->fd, req->http.request, strlen(req->http.request), MSG_NOSIGNAL);
 
     if(errno == EPIPE){ close_conn(0); return; }
 
@@ -146,13 +149,13 @@ int process_connection(){
             else{
                 fprintf(cproxy_output, "Parsing request\n");
                 if(parse_http_request(client_conn->fd, req) < 0){ close_conn(0); return -1; }
-                fprintf(cproxy_output, "%s: method:`%s`\n", __FUNCTION__, req->method);
-                fprintf(cproxy_output, "%s: path:`%s`\n", __FUNCTION__, req->path);
+                fprintf(cproxy_output, "%s: method:`%s`\n", __FUNCTION__, req->http.method);
+                fprintf(cproxy_output, "%s: path:`%s`\n", __FUNCTION__, req->http.path);
                 fprintf(cproxy_output, "%s: host:`%s`\n", __FUNCTION__, req->host);
                 fprintf(cproxy_output, "%s: port:`%s`\n", __FUNCTION__, req->port);
                 fprintf(cproxy_output, "%s: flags:`%s`\n", __FUNCTION__, 
                                         req->flags & HTTP_REQ_KEEPALIVE_CONN ? "HTTP_REQ_KEEPALIVE_CONN" : NULL);
-                fprintf(cproxy_output, "%s: request:`%s`\n", __FUNCTION__, req->request);
+                fprintf(cproxy_output, "%s: request:`%s`\n", __FUNCTION__, req->http.request);
                 if(acquire_conn() < 0){ close_conn(0); }
             }
             break;
@@ -161,7 +164,7 @@ int process_connection(){
             target_conn = (target_conn_data_t*)events[evt].data.ptr;
             client_conn = target_conn->client;
             req = &client_conn->data.req;
-            if(strcmp(req->method, HTTP_REQUEST_CONNECT) == 0 && client_conn->tunnel == 0){
+            if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) == 0 && client_conn->tunnel == 0){
                 send(client_conn->fd, HTTP_RESPONSE_CONN_ESTABLISHED,
                                       strlen(HTTP_RESPONSE_CONN_ESTABLISHED), 0);
 
@@ -185,6 +188,7 @@ int process_connection(){
             }
             break;
     }
+    return 0;
 }
 
 int accept_new_connection(){
@@ -194,7 +198,7 @@ int accept_new_connection(){
         return -1;
     }
 
-    if((conn_fd = accept(sock_fd, (struct sockaddr*)&conn_addr, &conn_addr_len)) < 0){
+    if((conn_fd = accept(sock_fd, (struct sockaddr*)&conn_addr, (socklen_t*)&conn_addr_len)) < 0){
         perror("Failed accept()");
         return -1;
     }
@@ -224,7 +228,9 @@ int accept_new_connection(){
         return -1;
     }
     num_conn++;
+    t_conn++;
     fprintf(cproxy_output, "Accepted new connection - %d\n", conn_fd);
+    return 0;
 }
 
 void run_event_loop(){
@@ -235,7 +241,7 @@ void run_event_loop(){
             return;
         }
 
-        fprintf(cproxy_output, "****************** Start - num_evs:%d num_conn:%d\n", num_evs, num_conn);
+        fprintf(cproxy_output, "****************** Start - num_evs:%d num_conn:%d t_conn:%d\n", num_evs, num_conn, t_conn);
         for(evt = 0;evt < num_evs;evt++){
             if(events[evt].data.fd == sock_fd){
                 if(accept_new_connection() < 0){ continue; }
@@ -243,7 +249,7 @@ void run_event_loop(){
                 if(process_connection() < 0){ continue; }
             }
         }
-        fprintf(cproxy_output, "****************** Done - num_evs:%d num_conn:%d\n", num_evs, num_conn);
+        fprintf(cproxy_output, "****************** Done - num_evs:%d num_conn:%d t_conn:%d\n", num_evs, num_conn, t_conn);
     }
 }
 

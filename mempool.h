@@ -3,10 +3,10 @@
 
 #include "common.h"
 #include "http.h"
+#include "request.h"
 
 #define CONN_CLIENT 0x1
 #define CONN_TARGET 0x2
-
 
 #define CONN_ONCE 0x10
 
@@ -26,7 +26,7 @@ typedef struct conn_data_t {
     int fd;
     uint8_t tunnel;
     union {
-        cproxy_http_request_t req;
+        cproxy_request_t req;
     } data;
     target_conn_data_t target;
     struct conn_data_t* next;
