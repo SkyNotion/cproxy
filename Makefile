@@ -4,7 +4,7 @@ cproxy: ${SRC}
 	${CC} -O1 ${CFLAGS} ${SRC} -o cproxy
 
 debug:
-	${CC} -ggdb ${CFLAGS} ${SRC} -o cproxy
+	${CC} -ggdb -D_DEBUG ${CFLAGS} ${SRC} -o cproxy
 
 clean:
 	rm -f cproxy
