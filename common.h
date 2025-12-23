@@ -13,6 +13,19 @@
 #define cproxy_error stderr
 
 #define CONN_BACKLOG 1024
-#define MAX_CONN 2048 /* Clients */
+#define MAX_CONN (2 * 1024)
+
+#ifdef _DEBUG
+    #define DEBUG_LOG(...) fprintf(cproxy_output, __VA_ARGS__)
+    #define ERROR_LOG(...) fprintf(cproxy_error, __VA_ARGS__)
+    #define ERRNO_LOG(x) perror(x)
+#else
+    #define DEBUG_LOG(...) ((void)0)
+    #define ERROR_LOG(...) ((void)0)
+    #define ERRNO_LOG(x) ((void)0)
+#endif
+
+#define CPROXY_INFO_LOG(...) fprintf(cproxy_output, __VA_ARGS__)
+#define CPROXY_ERROR_LOG(...) fprintf(cproxy_error, __VA_ARGS__)
 
 #endif
