@@ -20,8 +20,6 @@
 
 #define HTTP_HEADER_VALUE_KEEPALIVE "keep-alive"
 
-#define HTTP_REQ_KEEPALIVE_CONN 0x1
-
 void send_http_bad_request(int fd);
 int parse_http_request_path(cproxy_request_t* req);
 int parse_http_request_string(cproxy_request_t* req);
