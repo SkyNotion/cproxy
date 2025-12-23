@@ -16,6 +16,6 @@
 #include "mempool.h"
 #include "request.h"
 
-#define MAX_EVENTS 8
+#define MAX_EVENTS (MAX_CONN + 1)
 
 #endif
