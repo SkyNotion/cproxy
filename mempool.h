@@ -9,6 +9,7 @@
 #define CONN_TARGET 0x2
 
 #define CONN_ONCE 0x10
+#define CONN_CLOSED 0x20
 
 struct target_conn_data_t;
 struct conn_data_t;
@@ -16,8 +17,6 @@ struct conn_data_t;
 typedef struct target_conn_data_t {
     uint8_t type;
     int fd;
-    char host[256];
-    char port[7];
     struct conn_data_t* client;
 } target_conn_data_t;
 
@@ -37,7 +36,7 @@ typedef struct {
     size_t size;
     conn_data_t* head;
     conn_data_t* tail;
-    conn_data_t** blocks;
+    conn_data_t* block;
 } memory_pool_t;
 
 memory_pool_t* memory_pool_create(size_t size);
