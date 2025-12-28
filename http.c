@@ -16,7 +16,7 @@ inline void send_http_bad_request(int fd){
 inline int parse_http_request_path(cproxy_request_t* req){
     DEBUG_LOG("Entering parse_http_request_path()\n");
     parsed = start_pos = 0;
-    if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) == 0){
+    if(req->flags & CPROXY_HTTP_CONNECT){
         req->http.request[++rpos] = DELIMETER_FORWARDSLASH;
         do {
             inc++;
@@ -41,7 +41,7 @@ inline int parse_http_request_path(cproxy_request_t* req){
                     return -1;
                 }
 
-                if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) == 0){
+                if(req->flags & CPROXY_HTTP_CONNECT){
                     return 0;
                 }
 
@@ -65,6 +65,7 @@ inline int parse_http_request_string(cproxy_request_t* req){
     DEBUG_LOG("Entering parse_http_request_string()\n");
     memset(req->http.request, 0, sizeof(req->http.request)/sizeof(char));
     rpos = parsed = start_pos = 0;
+    req->flags = 0;
     do{
         switch(buffer[inc]){
             case DELIMETER_SPACE:
@@ -72,11 +73,11 @@ inline int parse_http_request_string(cproxy_request_t* req){
                 if(byte_count > 7){
                     return -1;
                 }
-                memcpy(req->http.method, &buffer[start_pos], byte_count);
-                req->http.method[byte_count] = '\0';
-                if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) != 0){
+                if(strncmp(&buffer[start_pos], HTTP_REQUEST_CONNECT, byte_count) != 0){
                     memcpy(req->http.request, &buffer[start_pos], byte_count);
                     req->http.request[byte_count] = DELIMETER_SPACE;
+                }else{
+                    req->flags |= CPROXY_HTTP_CONNECT;
                 }
                 if(parse_http_request_path(req) < 0){
                     return -1;
@@ -120,7 +121,7 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                         req->port[strlen(HTTP_PORT_80)] = '\0';
                     }
 
-                    if(strcmp(req->http.method, HTTP_REQUEST_CONNECT) != 0){
+                    if(!(req->flags & CPROXY_HTTP_CONNECT)){
                         memcpy(&req->http.request[rpos], http_header_buffer, strlen(http_header_buffer));
                         rpos += strlen(http_header_buffer);
                         req->http.request[rpos++] = DELIMETER_COLON;
@@ -133,12 +134,6 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                     }
 
                     memset(http_header_buffer, 0, sizeof(http_header_buffer)/sizeof(char));
-                }else if(strcmp(http_header_buffer, HTTP_HEADER_PROXY_CONNECTION) == 0){
-                    byte_count = inc - start_pos - 1;
-                    if(byte_count > 127){
-                        return -1;
-                    }
-                    buffer[inc - 1] = '\0';
                 }
                 start_pos = ++inc;
                 continue;

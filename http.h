@@ -16,9 +16,6 @@
 #define HTTP_REQUEST_CONNECT "CONNECT"
 
 #define HTTP_HEADER_HOST "host"
-#define HTTP_HEADER_PROXY_CONNECTION "proxy-connection"
-
-#define HTTP_HEADER_VALUE_KEEPALIVE "keep-alive"
 
 void send_http_bad_request(int fd);
 int parse_http_request_path(cproxy_request_t* req);
