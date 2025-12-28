@@ -8,6 +8,7 @@
 #include <errno.h>
 
 #include <sys/socket.h>
+#include <arpa/inet.h>
 
 #define cproxy_output stdout
 #define cproxy_error stderr

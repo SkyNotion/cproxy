@@ -8,11 +8,11 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 #include <netdb.h>
 
 #include "common.h"
 #include "http.h"
+#include "socks5.h"
 #include "mempool.h"
 #include "request.h"
 

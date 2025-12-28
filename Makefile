@@ -1,4 +1,4 @@
-SRC = cproxy.c http.c mempool.c
+SRC = cproxy.c http.c mempool.c socks5.c
 
 CFLAGS = -Wall -Wextra
 
