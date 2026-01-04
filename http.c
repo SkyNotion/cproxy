@@ -107,8 +107,13 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                         return -1;
                     }
 
+                    if(req->port != 0){
+                        break;
+                    }
+
                     if(req->host_len > 0){
                         memcpy(port_buffer, &buffer[start_pos], byte_count);
+                        port_buffer[byte_count] = '\0';
                         req->port = htons(atoi(port_buffer));
                     }else{
                         memcpy(req->host, &buffer[start_pos], byte_count);
