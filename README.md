@@ -21,7 +21,7 @@ make
 
 ## ISSUES
 
-* [x] The `getaddrinfo` POSIX function used to resolve hostnames is a blocking function, It may block when try to resolve a hostname. Usually it doesn't but it's a problem.
+* [x] The `getaddrinfo` POSIX function used to resolve hostnames is a blocking function, It may block when try to resolve a hostname. Usually it doesn't (resolves very fast in good network conditions) but it's a problem.
 > Fixed with custom nonblocking dns resolver implementation
 
 ## TASKS
