@@ -5,16 +5,15 @@
 #include "common.h"
 #include "request.h"
 
+#define HTTP_BUFFER_SIZE 4096
+
 #define DELIMETER_SPACE '\x20'
 #define DELIMETER_CR '\x0d'
 #define DELIMETER_LF '\x0a'
 #define DELIMETER_COLON '\x3a'
 #define DELIMETER_FORWARDSLASH '\x2f'
 
-#define BUFFER_SIZE 4096
-
 #define HTTP_REQUEST_CONNECT "CONNECT"
-
 #define HTTP_HEADER_HOST "host"
 
 void send_http_bad_request(int fd);

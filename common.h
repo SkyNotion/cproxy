@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
@@ -15,6 +16,8 @@
 
 #define CONN_BACKLOG 1024
 #define MAX_CONN (2 * 1024)
+
+#define CONSTSTRLEN(s) ((sizeof(s)/sizeof(char)) - 1)
 
 #ifdef _DEBUG
     #define DEBUG_LOG(...) fprintf(cproxy_output, __VA_ARGS__)

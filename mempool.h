@@ -4,32 +4,7 @@
 #include "common.h"
 #include "http.h"
 #include "request.h"
-
-#define CONN_CLIENT 0x1
-#define CONN_TARGET 0x2
-
-#define CONN_ONCE 0x10
-#define CONN_CLOSED 0x20
-
-struct target_conn_data_t;
-struct conn_data_t;
-
-typedef struct target_conn_data_t {
-    uint8_t type;
-    int fd;
-    struct conn_data_t* client;
-} target_conn_data_t;
-
-typedef struct conn_data_t {
-    uint8_t type;
-    int fd;
-    uint8_t tunnel;
-    union {
-        cproxy_request_t req;
-    } data;
-    target_conn_data_t target;
-    struct conn_data_t* next;
-} conn_data_t;
+#include "conn.h"
 
 typedef struct {
     size_t max_size;

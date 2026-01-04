@@ -1,23 +1,22 @@
 #include "http.h"
 
-static char buffer[BUFFER_SIZE], http_header_buffer[128];
-static int recv_sz, inc, crlf_count, start_pos, rpos, parsed, byte_count;
+static const char HTTP_1_1_SUFFIX[] = " HTTP/1.1\r\n"; 
+static const char HTTP_SUFFIX[] = "\r\n\r\n"; 
+static const char HTTP_RESPONSE_BAD_REQUEST[] = "HTTP/1.1 400 Bad Request\r\n\r\n";
 
-static const char* HTTP_1_1_SUFFIX = " HTTP/1.1\r\n"; 
-static const char* HTTP_SUFFIX = "\r\n\r\n"; 
-static const char* HTTP_RESPONSE_BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\n\r\n";
-static const char* HTTP_PORT_80 = "80";
+static char buffer[HTTP_BUFFER_SIZE], header_buffer[128], port_buffer[6];
+
+static int recv_sz, inc, crlf_count, start_pos, parsed, byte_count, header_buffer_len;
 
 inline void send_http_bad_request(int fd){
-    DEBUG_LOG("Entering send_http_bad_request()\n");
-    send(fd, HTTP_RESPONSE_BAD_REQUEST, strlen(HTTP_RESPONSE_BAD_REQUEST), MSG_NOSIGNAL);
+    send(fd, HTTP_RESPONSE_BAD_REQUEST,
+        CONSTSTRLEN(HTTP_RESPONSE_BAD_REQUEST), MSG_NOSIGNAL);
 }
 
 inline int parse_http_request_path(cproxy_request_t* req){
-    DEBUG_LOG("Entering parse_http_request_path()\n");
     parsed = start_pos = 0;
-    if(req->flags & CPROXY_HTTP_CONNECT){
-        req->http.request[++rpos] = DELIMETER_FORWARDSLASH;
+    if(req->flags & CPROXY_HTTP_TUNNEL){
+        req->buffer[++req->buffer_len] = DELIMETER_FORWARDSLASH;
         do {
             inc++;
             if(buffer[inc] == DELIMETER_SPACE){
@@ -41,15 +40,13 @@ inline int parse_http_request_path(cproxy_request_t* req){
                     return -1;
                 }
 
-                if(req->flags & CPROXY_HTTP_CONNECT){
+                if(req->flags & CPROXY_HTTP_TUNNEL){
                     return 0;
                 }
-
-                memcpy(&req->http.request[++rpos], &buffer[start_pos], byte_count);
-                rpos += byte_count;
-                memcpy(&req->http.request[rpos], HTTP_1_1_SUFFIX, strlen(HTTP_1_1_SUFFIX));
-                rpos += strlen(HTTP_1_1_SUFFIX);
-
+                memcpy(&req->buffer[++req->buffer_len], &buffer[start_pos], byte_count);
+                req->buffer_len += byte_count;
+                memcpy(&req->buffer[req->buffer_len], HTTP_1_1_SUFFIX, CONSTSTRLEN(HTTP_1_1_SUFFIX));
+                req->buffer_len += CONSTSTRLEN(HTTP_1_1_SUFFIX);
                 return 0;
             case DELIMETER_CR:
                 return -1;
@@ -62,22 +59,21 @@ inline int parse_http_request_path(cproxy_request_t* req){
 }
 
 inline int parse_http_request_string(cproxy_request_t* req){
-    DEBUG_LOG("Entering parse_http_request_string()\n");
-    memset(req->http.request, 0, sizeof(req->http.request)/sizeof(char));
-    rpos = parsed = start_pos = 0;
-    req->flags = 0;
+    req->buffer_len = 0;
+    parsed = start_pos = 0;
     do{
         switch(buffer[inc]){
             case DELIMETER_SPACE:
-                byte_count = rpos = inc++ - start_pos;
+                req->buffer_len = byte_count = inc++ - start_pos;
                 if(byte_count > 7){
                     return -1;
                 }
                 if(strncmp(&buffer[start_pos], HTTP_REQUEST_CONNECT, byte_count) != 0){
-                    memcpy(req->http.request, &buffer[start_pos], byte_count);
-                    req->http.request[byte_count] = DELIMETER_SPACE;
+                    memcpy(req->buffer, &buffer[start_pos], byte_count);
+                    req->buffer[byte_count] = DELIMETER_SPACE;
+                    req->buffer_len = byte_count;
                 }else{
-                    req->flags |= CPROXY_HTTP_CONNECT;
+                    req->flags |= CPROXY_HTTP_TUNNEL;
                 }
                 if(parse_http_request_path(req) < 0){
                     return -1;
@@ -96,9 +92,8 @@ inline int parse_http_request_string(cproxy_request_t* req){
 }
 
 inline int parse_http_request_headers(cproxy_request_t* req){
-    DEBUG_LOG("Entering parse_http_request_headers()\n");
-    memset(http_header_buffer, 0, sizeof(http_header_buffer)/sizeof(char));
-    memset(req->host, 0, sizeof(req->host)/sizeof(char));
+    header_buffer_len = 0;
+    req->host_len = 0;
     start_pos = inc;
     do{
         switch(buffer[inc]){
@@ -106,34 +101,31 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                 if(buffer[inc - 1] != DELIMETER_CR){
                     return -1;
                 }
-                if(strcmp(http_header_buffer, HTTP_HEADER_HOST) == 0){
+                if(strncmp(header_buffer, HTTP_HEADER_HOST, header_buffer_len) == 0){
                     byte_count = inc - start_pos - 1;
                     if(byte_count > 127){
                         return -1;
                     }
-                    buffer[inc - 1] = '\0';
-                    if(strlen(req->host) > 0){
-                        memcpy(req->port, &buffer[start_pos], byte_count);
+
+                    if(req->host_len > 0){
+                        memcpy(port_buffer, &buffer[start_pos], byte_count);
+                        req->port = htons(atoi(port_buffer));
                     }else{
                         memcpy(req->host, &buffer[start_pos], byte_count);
-                        req->host[byte_count] = '\0';
-                        memcpy(req->port, HTTP_PORT_80, strlen(HTTP_PORT_80));
-                        req->port[strlen(HTTP_PORT_80)] = '\0';
+                        req->host_len = byte_count;
+                        req->port = htons(80);
                     }
-
-                    if(!(req->flags & CPROXY_HTTP_CONNECT)){
-                        memcpy(&req->http.request[rpos], http_header_buffer, strlen(http_header_buffer));
-                        rpos += strlen(http_header_buffer);
-                        req->http.request[rpos++] = DELIMETER_COLON;
-                        req->http.request[rpos++] = DELIMETER_SPACE;
-                        memcpy(&req->http.request[rpos], req->host, strlen(req->host));
-                        rpos += strlen(req->host);
-                        memcpy(&req->http.request[rpos], HTTP_SUFFIX, strlen(HTTP_SUFFIX));
-                        rpos += strlen(HTTP_SUFFIX);
-                        req->http.request[rpos] = '\0';
+                    if(!(req->flags & CPROXY_HTTP_TUNNEL)){
+                        memcpy(&req->buffer[req->buffer_len], header_buffer, header_buffer_len);
+                        req->buffer_len += header_buffer_len;
+                        req->buffer[req->buffer_len++] = DELIMETER_COLON;
+                        req->buffer[req->buffer_len++] = DELIMETER_SPACE;
+                        memcpy(&req->buffer[req->buffer_len], req->host, req->host_len);
+                        req->buffer_len += req->host_len;
+                        memcpy(&req->buffer[req->buffer_len], HTTP_SUFFIX, CONSTSTRLEN(HTTP_SUFFIX));
+                        req->buffer_len += CONSTSTRLEN(HTTP_SUFFIX);
                     }
-
-                    memset(http_header_buffer, 0, sizeof(http_header_buffer)/sizeof(char));
+                    header_buffer_len = 0;
                 }
                 start_pos = ++inc;
                 continue;
@@ -142,14 +134,15 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                 if(byte_count > 127){
                     return -1;
                 }
-                if(strlen(http_header_buffer) > 0 && strcmp(http_header_buffer, HTTP_HEADER_HOST) == 0){
+                if(header_buffer_len > 0 && 
+                    strncmp(header_buffer, HTTP_HEADER_HOST, header_buffer_len) == 0){
                     memcpy(req->host, &buffer[start_pos], byte_count);
-                    req->host[byte_count] = '\0';
+                    req->host_len = byte_count;
                     start_pos = inc;
                     continue;
                 }
-                memcpy(http_header_buffer, &buffer[start_pos], byte_count);
-                http_header_buffer[byte_count] = '\0';
+                memcpy(header_buffer, &buffer[start_pos], byte_count);
+                header_buffer_len = byte_count;
                 start_pos = ++inc;
                 continue;
             default:
@@ -163,11 +156,10 @@ inline int parse_http_request_headers(cproxy_request_t* req){
 
 int parse_http_request(int fd, cproxy_request_t* req){
     errno = 0;
-    DEBUG_LOG("Entering parse_http_request()\n");
     crlf_count = 0;
-    do {
+    do{
         inc = 0;
-        recv_sz = recv(fd, buffer, BUFFER_SIZE, 0);
+        recv_sz = recv(fd, buffer, HTTP_BUFFER_SIZE, 0);
         if(errno == EAGAIN){
             break;
         }
@@ -175,20 +167,17 @@ int parse_http_request(int fd, cproxy_request_t* req){
             switch(crlf_count){
                 case 0:
                     if(parse_http_request_string(req) < 0){
-                        ERROR_LOG("%s: Failed parse_http_request_string()\n", __FUNCTION__);
                         send_http_bad_request(fd);
                         return -1;
                     }
                     break;
                 case 1:
                     if(parse_http_request_headers(req) < 0){
-                        ERROR_LOG("%s: Failed parse_http_request_headers()\n", __FUNCTION__);
                         send_http_bad_request(fd);
                         return -1;
                     }
                     break;
                 default:
-                    ERROR_LOG("%s: Unexpected behaviour - crlf_count:%d\n", __FUNCTION__, crlf_count);
                     return -1;
             }
         }
@@ -198,5 +187,6 @@ int parse_http_request(int fd, cproxy_request_t* req){
         return -1;
     }
 
+    req->flags |= CPROXY_REQ_HTTP;
     return 0;
 }

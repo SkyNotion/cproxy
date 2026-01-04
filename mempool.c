@@ -11,8 +11,8 @@ memory_pool_t* memory_pool_create(size_t size){
         if(memory_pool->head != NULL){
             memory_pool->head->next = memory_pool->tail;
         }
+        memory_pool->tail->index = (uint16_t)i;
         memory_pool->tail->fd = 0;
-        memory_pool->tail->tunnel = 0;
         memset(&memory_pool->tail->data, 0, sizeof(memory_pool->tail->data));
         memset(&memory_pool->tail->target, 0, sizeof(target_conn_data_t));
         memory_pool->head = memory_pool->tail;
@@ -46,8 +46,8 @@ int memory_pool_release(memory_pool_t* memory_pool, conn_data_t** conn_data){
     memory_pool->tail->next = *conn_data;
     memory_pool->tail = *conn_data;
     memory_pool->tail->next = NULL;
+    memory_pool->tail->type = 0;
     memory_pool->tail->fd = 0;
-    memory_pool->tail->tunnel = 0;
     memset(&memory_pool->tail->data, 0, sizeof(memory_pool->tail->data));
     memset(&memory_pool->tail->target, 0, sizeof(target_conn_data_t));
     memory_pool->size--;

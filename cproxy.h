@@ -5,17 +5,18 @@
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/epoll.h>
-#include <sys/types.h>
 #include <netinet/in.h>
-#include <netdb.h>
 
 #include "common.h"
+#include "conn.h"
 #include "http.h"
 #include "socks5.h"
 #include "mempool.h"
 #include "request.h"
+#include "dns_resolve.h"
 
-#define MAX_EVENTS (MAX_CONN + 1)
+#define BUFFER_SIZE (64 * 1024)
+
+#define MAX_EVENTS (MAX_CONN + 2) // 1 for listening socket, 1 for dns resolver
 
 #endif
