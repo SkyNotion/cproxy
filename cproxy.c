@@ -132,7 +132,7 @@ register_conn:
     }
     num_target++;
 
-    if(errno == ENETDOWN || errno == ENETUNREACH || errno == ENETRESET){
+    if(errno != EINPROGRESS){
         return -1;
     }
 
@@ -177,6 +177,7 @@ int process_connection(){
     type = (uint8_t*)events[evt].data.ptr;
     switch(*type & 0xf){
         case CONN_CLIENT:
+            DEBUG_LOG("type:%d CONN_CLIENT\n", *type);
             client_conn = (conn_data_t*)events[evt].data.ptr;
             target_conn = &client_conn->target;
             req = &client_conn->data.req;
@@ -188,6 +189,15 @@ int process_connection(){
                     close_conn();
                     return -1;
                 }
+
+                DEBUG_LOG("Parsed socks5 " \
+                          "host:`%s` host_len:%d ipv4_addr:%d.%d.%d.%d " \
+                          "port:%d flags:%d buffer:`%s` buffer_len:%d\n",
+                          req->host, req->host_len, (uint8_t)(req->ipv4_addr),
+                          (uint8_t)((req->ipv4_addr >> 8) & 0xff),
+                          (uint8_t)((req->ipv4_addr >> 16) & 0xff),
+                          (uint8_t)((req->ipv4_addr >> 24) & 0xff),
+                          ntohs(req->port), req->flags, req->buffer, req->buffer_len);
 
                 if(acquire_conn() < 0){
                     close_conn();
@@ -215,6 +225,15 @@ int process_connection(){
                     return -1;
                 }
 
+                DEBUG_LOG("Parsed http " \
+                          "host:`%s` host_len:%d ipv4_addr:%d.%d.%d.%d " \
+                          "port:%d flags:%d buffer:`%s` buffer_len:%d\n",
+                          req->host, req->host_len, (uint8_t)(req->ipv4_addr),
+                          (uint8_t)((req->ipv4_addr >> 8) & 0xff),
+                          (uint8_t)((req->ipv4_addr >> 16) & 0xff),
+                          (uint8_t)((req->ipv4_addr >> 24) & 0xff),
+                          ntohs(req->port), req->flags, req->buffer, req->buffer_len);
+
                 if(acquire_conn() < 0){
                     close_conn();
                 }
@@ -222,6 +241,7 @@ int process_connection(){
             }
             break;
         case CONN_TARGET:
+            DEBUG_LOG("type:%d CONN_TARGET\n", *type);
             target_conn = (target_conn_data_t*)events[evt].data.ptr;
             client_conn = target_conn->client;
             req = &client_conn->data.req;
@@ -266,6 +286,9 @@ int process_connection(){
                     tunnel_data(client_conn->fd, target_conn->fd, CONN_TARGET | CONN_ONCE);
                 }
             }
+            break;
+        default:
+            DEBUG_LOG("Unknown type:%d\n", *type);
             break;
     }
     return 0;
@@ -317,9 +340,13 @@ int accept_new_connection(){
 
 void run_event_loop(){
     for(;;){
+        errno = 0;
         DEBUG_LOG("Calling epoll_wait\n");
         if((num_evs = epoll_wait(epoll_fd, events, MAX_EVENTS, -1)) < 0){
             ERRNO_LOG("Failed epoll_wait()");
+            if(errno == EINTR){
+                 continue;
+            }
             return;
         }
 
@@ -331,6 +358,7 @@ void run_event_loop(){
 
         for(evt = 0;evt < num_evs;evt++){
             if(events[evt].data.fd == sock_fd){
+                DEBUG_LOG("Processing new conn request\n");
                 if(accept_new_connection() < 0){ 
                     continue; 
                 }
@@ -369,6 +397,7 @@ void run_event_loop(){
                     close_conn();
                 }
             }else{
+                DEBUG_LOG("Processing conn\n");
                 if(process_connection() < 0){ 
                     continue; 
                 }
