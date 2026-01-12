@@ -1,6 +1,6 @@
 ### CPROXY
 
-A mini http and socks5 proxy written `c`, This was written to be deployed on a Linux Container (podman pod or docker container). 
+A mini http and socks5 proxy server written `c`, This was written to be deployed on a Linux Container (podman pod or docker container). 
 
 It uses a LT(Level triggered) approach for epoll events.
 
