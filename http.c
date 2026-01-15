@@ -6,7 +6,11 @@ static const char HTTP_RESPONSE_BAD_REQUEST[] = "HTTP/1.1 400 Bad Request\r\n\r\
 
 static char buffer[HTTP_BUFFER_SIZE], header_buffer[128], port_buffer[6];
 
-static int recv_sz, inc, crlf_count, start_pos, parsed, byte_count, header_buffer_len;
+static int recv_sz, inc, crlf_count, 
+           start_pos, parsed, byte_count, 
+           header_buffer_len, val;
+
+static uint8_t is_http_host, dot_count, not_digit, spos;
 
 inline void send_http_bad_request(int fd){
     send(fd, HTTP_RESPONSE_BAD_REQUEST,
@@ -94,6 +98,7 @@ inline int parse_http_request_string(cproxy_request_t* req){
 inline int parse_http_request_headers(cproxy_request_t* req){
     header_buffer_len = 0;
     req->host_len = 0;
+    is_http_host = dot_count = not_digit = 0;
     start_pos = inc;
     do{
         switch(buffer[inc]){
@@ -112,12 +117,18 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                     }
 
                     if(req->host_len > 0){
+                        if(get_addr_type(req) < 0){
+                            return -1;
+                        }
                         memcpy(port_buffer, &buffer[start_pos], byte_count);
                         port_buffer[byte_count] = '\0';
                         req->port = htons(atoi(port_buffer));
                     }else{
                         memcpy(req->host, &buffer[start_pos], byte_count);
                         req->host_len = byte_count;
+                        if(get_addr_type(req) < 0){
+                            return -1;
+                        }
                         req->port = htons(80);
                     }
                     if(!(req->flags & CPROXY_HTTP_TUNNEL)){
@@ -141,6 +152,7 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                 }
                 if(header_buffer_len > 0 && 
                     strncmp(header_buffer, HTTP_HEADER_HOST, header_buffer_len) == 0){
+                    is_http_host = 1;
                     memcpy(req->host, &buffer[start_pos], byte_count);
                     req->host_len = byte_count;
                     start_pos = inc;
@@ -149,13 +161,53 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                 memcpy(header_buffer, &buffer[start_pos], byte_count);
                 header_buffer_len = byte_count;
                 start_pos = ++inc;
+                is_http_host = 0;
+                if(strncmp(header_buffer, HTTP_HEADER_HOST, header_buffer_len) == 0){
+                    is_http_host = 1;
+                }
                 continue;
+            case DELIMETER_DOT:
+                if(is_http_host == 1){
+                    dot_count++;
+                }
+                break;
+            case DELIMETER_CR:
+                break;
             default:
+                if(is_http_host == 1 && isdigit((int)buffer[inc]) == 0){
+                    not_digit++;
+                }
                 buffer[inc] = (char)tolower((int)buffer[inc]);
                 break;
         }
         inc++;
     }while(inc < recv_sz);
+    return 0;
+}
+
+inline int get_addr_type(cproxy_request_t* req){
+    if(not_digit == 0 && dot_count == 3){
+        req->flags |= CPROXY_ADDR_IPV4;
+        val = 0;
+        dot_count = spos = 0;
+        req->ipv4_addr = 0;
+        req->host[req->host_len] = '\0';
+        do{
+            if(req->host[val] == DELIMETER_DOT){
+                req->host[val] = '\0';
+                req->ipv4_addr |= (atoi(&req->host[spos]) << (8 * dot_count++));
+                req->host[val] = '.';
+                spos = val + 1; 
+            }
+            val++;
+        }while(dot_count < 3);
+        req->ipv4_addr |= (atoi(&req->host[spos]) << 24);
+    }else if(not_digit > 0 && dot_count > 0){
+        req->flags |= CPROXY_ADDR_DOMAIN;
+    }else{
+        return -1;
+    }
+
     return 0;
 }
 

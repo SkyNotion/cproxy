@@ -19,7 +19,7 @@
 #define CPROXY_SOCKS5_TARGET_CONN (0x1 << 17)
 
 typedef struct {
-    char host[256];
+    char host[257];
     uint8_t host_len;
     union {
         uint32_t ipv4_addr;

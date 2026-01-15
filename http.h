@@ -12,6 +12,7 @@
 #define DELIMETER_LF '\x0a'
 #define DELIMETER_COLON '\x3a'
 #define DELIMETER_FORWARDSLASH '\x2f'
+#define DELIMETER_DOT '\x2e'
 
 #define HTTP_REQUEST_CONNECT "CONNECT"
 #define HTTP_HEADER_HOST "host"
@@ -20,6 +21,7 @@ void send_http_bad_request(int fd);
 int parse_http_request_path(cproxy_request_t* req);
 int parse_http_request_string(cproxy_request_t* req);
 int parse_http_request_headers(cproxy_request_t* req);
+int get_addr_type(cproxy_request_t* req);
 int parse_http_request(int fd, cproxy_request_t* req);
 
 #endif
