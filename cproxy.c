@@ -156,7 +156,7 @@ void send_request(){
     }
 }
 
-void tunnel_data(int write_fd, int read_fd, uint8_t type){
+void tunnel_data(int write_fd, int read_fd){
     errno = 0;
     do{
         recv_sz = recv(read_fd, buffer, BUFFER_SIZE, 0);
@@ -166,9 +166,7 @@ void tunnel_data(int write_fd, int read_fd, uint8_t type){
         send(write_fd, buffer, recv_sz, MSG_NOSIGNAL);
     }while(recv_sz > 0);
 
-    if(type == (CONN_TARGET | CONN_ONCE) ||
-       recv_sz == 0 ||
-       (errno != 0 && errno != EAGAIN)){
+    if(recv_sz == 0 || (errno != 0 && errno != EAGAIN)){
         close_conn();
     }
 }
@@ -182,7 +180,7 @@ int process_connection(){
             target_conn = &client_conn->target;
             req = &client_conn->data.req;
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
-                tunnel_data(target_conn->fd, client_conn->fd, CONN_CLIENT);
+                tunnel_data(target_conn->fd, client_conn->fd);
             }else if((req->flags & CPROXY_REQ_SOCKS5) &&
                     !(req->flags & CPROXY_ACTIVE_TUNNEL)){
                 if(socks5_handshake(client_conn->fd, req) < 0){
@@ -246,7 +244,7 @@ int process_connection(){
             client_conn = target_conn->client;
             req = &client_conn->data.req;
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
-                tunnel_data(client_conn->fd, target_conn->fd, CONN_TARGET);
+                tunnel_data(client_conn->fd, target_conn->fd);
             }else if(((req->flags & CPROXY_HTTP_TUNNEL) ||
                       (req->flags & CPROXY_SOCKS5_TUNNEL)) &&
                       !(req->flags & CPROXY_ACTIVE_TUNNEL)){
@@ -279,12 +277,9 @@ int process_connection(){
             }else if((req->flags & CPROXY_REQ_SOCKS5) && 
                      (req->flags & CPROXY_UDP_SOCK)){
                 DEBUG_LOG("SOCKS5 UDP CONN\n");
-            }else{
-                if(events[evt].events == EPOLLOUT){
-                    send_request(); 
-                }else{
-                    tunnel_data(client_conn->fd, target_conn->fd, CONN_TARGET | CONN_ONCE);
-                }
+            }else if(events[evt].events == EPOLLOUT){
+                send_request();
+                req->flags |= CPROXY_ACTIVE_TUNNEL;
             }
             break;
         default:
