@@ -8,7 +8,7 @@ cproxy: ${SRC}
 	${CC} -O2 ${CFLAGS} -o ${EXEC} ${SRC}
 
 debug:
-	make clean
+	rm -f cproxy
 	${CC} -ggdb -D_DEBUG ${CFLAGS} -o ${EXEC} ${SRC}
 
 clean:
