@@ -208,7 +208,6 @@ int process_connection(){
                 }
 
                 if(buffer[0] == '\x05'){
-                    req->flags |= CPROXY_REQ_SOCKS5;
                     req->flags &= 0xfff0ffff;
                     req->flags |= CPROXY_SOCKS5_INITIAL_AUTH;
                     if(socks5_handshake(client_conn->fd, req) < 0){
@@ -235,7 +234,6 @@ int process_connection(){
                 if(acquire_conn() < 0){
                     close_conn();
                 }
-                req->flags |= CPROXY_REQ_HTTP;
             }
             break;
         case CONN_TARGET:

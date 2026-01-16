@@ -23,6 +23,7 @@ int socks5_handshake(int fd, cproxy_request_t* req){
             }
             req->flags &= 0xfff0ffff;
             req->flags |= CPROXY_SOCKS5_TARGET_CONN;
+            req->flags |= CPROXY_REQ_SOCKS5;
             break;
         case CPROXY_SOCKS5_TARGET_CONN:
             recv_sz = recv(fd, buffer, SOCKS5_BUFFER_SIZE, 0);
