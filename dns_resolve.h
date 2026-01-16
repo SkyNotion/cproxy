@@ -24,7 +24,6 @@ struct dns_response{
 
 int init_dns_resolver(int epoll_fd);
 int send_dns_req(uint16_t id, const char* host, uint8_t host_len);
-void parse_dns_answer(struct dns_response *dns_resp);
 int recv_dns_resp(struct dns_response *dns_resp);
 
 #endif
