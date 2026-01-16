@@ -10,7 +10,7 @@ static int dns_fd;
 static struct sockaddr_in dns_addr;
 static socklen_t dns_addr_len;
 
-static int pos = 0, lpos = 0, inc = 0, sz = 0, data_sz = 0;
+static int pos, lpos, inc, sz, data_sz;
 static uint16_t TYPE, CLASS;
 static struct dns_header DNS_HEADER;
 
