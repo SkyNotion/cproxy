@@ -96,6 +96,7 @@ int acquire_conn(){
                     (uint8_t)((conn_addr.sin_addr.s_addr >> 24) & 0xff),
                     ntohs(conn_addr.sin_port));
     }else if(req->flags & CPROXY_ADDR_IPV6){
+        DEBUG_LOG("IPV6 ADDRESS\n");
         memcpy(conn_addr6.sin6_addr.s6_addr, req->ipv6_addr, 16);
         conn_addr6.sin6_port = req->port;
         conn_addr_len = sizeof(conn_addr6);
@@ -120,6 +121,7 @@ int acquire_conn(){
     }
 
     connect(target_conn->fd, addr, conn_addr_len);
+    DEBUG_LOG("Attempt connection\n");
 
     ERRNO_LOG("Status");
 
@@ -175,10 +177,13 @@ int process_connection(){
     type = (uint8_t*)events[evt].data.ptr;
     switch(*type & 0xf){
         case CONN_CLIENT:
-            DEBUG_LOG("type:%d CONN_CLIENT\n", *type);
+            DEBUG_LOG("type:%d CONN_CLIENT events:%d\n", *type, events[evt].events);
             client_conn = (conn_data_t*)events[evt].data.ptr;
             target_conn = &client_conn->target;
             req = &client_conn->data.req;
+            if(events[evt].events & (EPOLLERR | EPOLLHUP)){
+                close_conn();
+            }
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
                 tunnel_data(target_conn->fd, client_conn->fd);
             }else if((req->flags & CPROXY_REQ_SOCKS5) &&
@@ -237,15 +242,17 @@ int process_connection(){
             }
             break;
         case CONN_TARGET:
-            DEBUG_LOG("type:%d CONN_TARGET\n", *type);
+            DEBUG_LOG("type:%d CONN_TARGET event:%d\n", *type, events[evt].events);
             target_conn = (target_conn_data_t*)events[evt].data.ptr;
             client_conn = target_conn->client;
             req = &client_conn->data.req;
+            if(events[evt].events & (EPOLLERR | EPOLLHUP)){
+                close_conn();
+            }
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
                 tunnel_data(client_conn->fd, target_conn->fd);
-            }else if(((req->flags & CPROXY_HTTP_TUNNEL) ||
-                      (req->flags & CPROXY_SOCKS5_TUNNEL)) &&
-                      !(req->flags & CPROXY_ACTIVE_TUNNEL)){
+            }else if((req->flags & (CPROXY_HTTP_TUNNEL | CPROXY_SOCKS5_TUNNEL)) &&
+                     !(req->flags & CPROXY_ACTIVE_TUNNEL)){
                 errno = 0;
                 if(req->flags & CPROXY_REQ_HTTP){
                     send(client_conn->fd, HTTP_CONN_ESTABLISHED,
