@@ -4,7 +4,7 @@ static const uint8_t header[] = {0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
 static const uint8_t in_dns_question[] = {0x00, 0x01, 0x00, 0x01};
 
 static char buffer[DNS_BUFFER_SIZE];
-static char hostname[257];
+static char hostname[258];
 
 static int dns_fd;
 static struct sockaddr_in dns_addr;
@@ -140,6 +140,7 @@ int recv_dns_resp(struct dns_response *dns_resp){
         memcpy(&hostname[pos], &buffer[sz], ++inc);
         pos += inc;
     }while(inc != 0);
+    hostname[pos - 1] = '\0';
     lpos += (pos + 4);
     dns_resp->ipv4 = 0;
 
