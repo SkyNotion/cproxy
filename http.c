@@ -4,20 +4,39 @@ static const char HTTP_1_1_SUFFIX[] = " HTTP/1.1\r\n";
 static const char HTTP_SUFFIX[] = "\r\n\r\n"; 
 static const char HTTP_RESPONSE_BAD_REQUEST[] = "HTTP/1.1 400 Bad Request\r\n\r\n";
 
-static char buffer[HTTP_BUFFER_SIZE], header_buffer[128], port_buffer[6];
+static char buffer[HTTP_BUFFER_SIZE + 1], header_buffer[128], port_buffer[6];
 
 static int recv_sz, inc, crlf_count, 
            start_pos, parsed, byte_count, 
-           header_buffer_len, val;
+           header_buffer_len, pos, temp_inc,
+           num_after_blocks;
 
-static uint8_t is_http_host, dot_count, not_digit, spos;
+static uint8_t is_http_host, dot_count, zsection, not_digit, total_blocks;
 
-inline void send_http_bad_request(int fd){
+static char ipv6_block[4];
+
+static uint8_t ascii_to_hex_lut[] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,1,2,3,4,5,6,7,8,9,0,0,0,
+    0,0,0,0,10,11,12,13,14,15,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10,11,12,13,
+    14,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+};
+
+static inline void send_http_bad_request(int fd){
     send(fd, HTTP_RESPONSE_BAD_REQUEST,
         CONSTSTRLEN(HTTP_RESPONSE_BAD_REQUEST), MSG_NOSIGNAL);
 }
 
-inline int parse_http_request_path(cproxy_request_t* req){
+static inline int parse_http_request_path(cproxy_request_t* req){
     parsed = start_pos = 0;
     if(req->flags & CPROXY_HTTP_TUNNEL){
         req->buffer[++req->buffer_len] = DELIMETER_FORWARDSLASH;
@@ -62,7 +81,7 @@ inline int parse_http_request_path(cproxy_request_t* req){
     return -1;
 }
 
-inline int parse_http_request_string(cproxy_request_t* req){
+static inline int parse_http_request_string(cproxy_request_t* req){
     req->buffer_len = 0;
     parsed = start_pos = 0;
     do{
@@ -95,7 +114,106 @@ inline int parse_http_request_string(cproxy_request_t* req){
     return -1;
 }
 
-inline int parse_http_request_headers(cproxy_request_t* req){
+static inline void parse_ipv6_hex(cproxy_request_t* req){
+    req->ipv6_addr[15 - byte_count] = (ascii_to_hex_lut[(uint8_t)ipv6_block[0]]*16)+ascii_to_hex_lut[(uint8_t)ipv6_block[1]];
+    req->ipv6_addr[15 - byte_count - 1] = (ascii_to_hex_lut[(uint8_t)ipv6_block[2]]*16)+ascii_to_hex_lut[(uint8_t)ipv6_block[3]];
+}
+
+static inline void parse_zero_section(){
+    temp_inc = inc + 2;
+    num_after_blocks = 0;
+    if(buffer[temp_inc] == DELIMETER_CLOSE_SQUARE_BRACKET){
+        goto _set_byte_count;
+    }
+    do{
+        if(buffer[temp_inc++] == DELIMETER_COLON){
+            num_after_blocks++;
+        }
+    }while(buffer[temp_inc] != DELIMETER_CLOSE_SQUARE_BRACKET && (temp_inc - inc) < 39);
+_set_byte_count:
+    if(buffer[temp_inc] == DELIMETER_CLOSE_SQUARE_BRACKET &&
+       buffer[temp_inc - 1] != DELIMETER_COLON){
+        num_after_blocks++;
+    }
+    zsection = 8 - (total_blocks + num_after_blocks);
+    total_blocks += zsection;
+    byte_count += (zsection * 2);
+    inc++;
+}
+
+static inline int get_addr_type(cproxy_request_t* req){
+    if(not_digit == 0 && dot_count == 3){
+        req->flags |= CPROXY_ADDR_IPV4;
+        req->ipv4_addr = 0;
+        req->host[req->host_len] = '\0';
+        parsed = pos = 0;
+        dot_count = 0;
+        do{
+            if(req->host[parsed] == DELIMETER_DOT){
+                req->host[parsed] = '\0';
+                req->ipv4_addr |= (atoi(&req->host[pos]) << (8 * dot_count++));
+                req->host[parsed] = '.';
+                pos = parsed + 1; 
+            }
+            parsed++;
+        }while(dot_count < 3);
+        req->ipv4_addr |= (atoi(&req->host[pos]) << 24);
+    }else if(not_digit > 0 && dot_count > 0){
+        req->flags |= CPROXY_ADDR_DOMAIN;
+    }else if(req->flags & CPROXY_ADDR_IPV6){
+        if(req->host_len > 0){
+            return 0;
+        }
+        memset(req->ipv6_addr, 0, sizeof(req->ipv6_addr));
+        start_pos = inc++;
+        pos = inc;
+        parsed = byte_count = 0;
+        zsection = dot_count = total_blocks = 0;
+        do{
+            if(buffer[inc] == DELIMETER_COLON){
+                if(dot_count == 0 &&
+                   zsection == 0 &&
+                   buffer[inc - 1] == DELIMETER_OPEN_SQUARE_BRACKET &&
+                   buffer[inc + 1] == DELIMETER_COLON){
+                   parse_zero_section();
+                   pos = ++inc;
+                   continue;
+                }
+                total_blocks++;
+                dot_count = inc - pos;
+                memset(ipv6_block, 0x30, sizeof(ipv6_block));
+                memcpy(&ipv6_block[4 - dot_count], &buffer[pos], dot_count);
+                parse_ipv6_hex(req);
+                byte_count += 2;
+                parsed += 5;
+                if(zsection == 0 &&
+                   buffer[inc + 1] == DELIMETER_COLON){
+                    parse_zero_section();
+                }
+                pos = inc + 1;
+            }
+            inc++;
+        }while(parsed < 39 && buffer[inc] != DELIMETER_CLOSE_SQUARE_BRACKET);
+        if(buffer[inc] == DELIMETER_CLOSE_SQUARE_BRACKET &&
+           buffer[inc - 1] != DELIMETER_COLON){
+            total_blocks++;
+            dot_count = inc - pos;
+            memset(ipv6_block, 0x30, sizeof(ipv6_block));
+            memcpy(&ipv6_block[4 - dot_count], &buffer[pos], dot_count);
+            parse_ipv6_hex(req);
+        }
+
+        if(total_blocks != 8){
+            return -1;
+        }
+    }else{
+        return -1;
+    }
+    dot_count = parsed - (inc - pos);
+    return 0;
+}
+
+static inline int parse_http_request_headers(cproxy_request_t* req){
     header_buffer_len = 0;
     req->host_len = 0;
     is_http_host = dot_count = not_digit = 0;
@@ -123,6 +241,11 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                         memcpy(port_buffer, &buffer[start_pos], byte_count);
                         port_buffer[byte_count] = '\0';
                         req->port = htons(atoi(port_buffer));
+                        if(!(req->flags & CPROXY_HTTP_TUNNEL)){
+                            req->host[req->host_len++] = DELIMETER_COLON;
+                            memcpy(&req->host[req->host_len], port_buffer, byte_count);
+                            req->host_len += byte_count;
+                        }
                     }else{
                         memcpy(req->host, &buffer[start_pos], byte_count);
                         req->host_len = byte_count;
@@ -150,6 +273,7 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                 if(byte_count > 127){
                     return -1;
                 }
+
                 if(header_buffer_len > 0 && 
                     strncmp(header_buffer, HTTP_HEADER_HOST, header_buffer_len) == 0){
                     is_http_host = 1;
@@ -173,6 +297,14 @@ inline int parse_http_request_headers(cproxy_request_t* req){
                 break;
             case DELIMETER_CR:
                 break;
+            case DELIMETER_OPEN_SQUARE_BRACKET:
+                if(is_http_host == 1){
+                    req->flags |= CPROXY_ADDR_IPV6;
+                    if(get_addr_type(req) < 0){
+                        return -1;
+                    }  
+                }
+                break;
             default:
                 if(is_http_host == 1 && isdigit((int)buffer[inc]) == 0){
                     not_digit++;
@@ -185,32 +317,6 @@ inline int parse_http_request_headers(cproxy_request_t* req){
     return 0;
 }
 
-inline int get_addr_type(cproxy_request_t* req){
-    if(not_digit == 0 && dot_count == 3){
-        req->flags |= CPROXY_ADDR_IPV4;
-        val = 0;
-        dot_count = spos = 0;
-        req->ipv4_addr = 0;
-        req->host[req->host_len] = '\0';
-        do{
-            if(req->host[val] == DELIMETER_DOT){
-                req->host[val] = '\0';
-                req->ipv4_addr |= (atoi(&req->host[spos]) << (8 * dot_count++));
-                req->host[val] = '.';
-                spos = val + 1; 
-            }
-            val++;
-        }while(dot_count < 3);
-        req->ipv4_addr |= (atoi(&req->host[spos]) << 24);
-    }else if(not_digit > 0 && dot_count > 0){
-        req->flags |= CPROXY_ADDR_DOMAIN;
-    }else{
-        return -1;
-    }
-
-    return 0;
-}
-
 int parse_http_request(int fd, cproxy_request_t* req){
     errno = 0;
     crlf_count = 0;
@@ -220,6 +326,7 @@ int parse_http_request(int fd, cproxy_request_t* req){
         if(errno == EAGAIN){
             break;
         }
+
         while(inc < recv_sz){
             switch(crlf_count){
                 case 0:
