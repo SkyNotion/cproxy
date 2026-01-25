@@ -15,7 +15,7 @@
 #include "request.h"
 #include "dns_resolve.h"
 
-#define BUFFER_SIZE (128 * 1024)
+#define BUFFER_SIZE (8 * 1024)
 
 #define MAX_EVENTS (MAX_CONN + 2) // 1 for listening socket, 1 for dns resolver
 
