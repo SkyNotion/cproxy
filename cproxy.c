@@ -6,7 +6,7 @@ static int sock_fd, epoll_fd, dns_fd, conn_fd, fd_flags, evt, num_evs;
 static struct epoll_event ev, events[MAX_EVENTS];
 static memory_pool_t* memory_pool = NULL;
 
-static uint8_t* type;
+static uint32_t* flags;
 static conn_data_t* client_conn;
 static target_conn_data_t* target_conn;
 static cproxy_request_t* req;
@@ -19,12 +19,13 @@ static socklen_t conn_addr_len;
 
 static int num_client = 0, num_target = 0;
 
-static int recv_sz;
+static int recv_sz, send_sz, offset;
 static int addr_family, socktype;
 
 static char buffer[BUFFER_SIZE];
 
 void handle_signal(int signal){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     CPROXY_ERROR_LOG("Received signal - signal:%d\n", signal);
     if(memory_pool != NULL){
         memory_pool_destroy(memory_pool);
@@ -36,7 +37,8 @@ void handle_signal(int signal){
     exit(signal);
 }
 
-int setsocketnonblocking(int fd){
+static inline int setsocketnonblocking(int fd){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     if((fd_flags = fcntl(fd, F_GETFL, 0)) < 0){
         ERRNO_LOG("Failed fcntl() F_GETFL");
         return -1;
@@ -50,37 +52,108 @@ int setsocketnonblocking(int fd){
     return 0;
 }
 
+static inline int setepollevent(int fd, uint32_t events, void* data){
+    DEBUG_LOG("%s\n", __FUNCTION__);
+    ev.events = events;
+    ev.data.ptr = data;
+    return epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev);
+}
+
+static inline int setwaitfdready(uint32_t type){
+    DEBUG_LOG("%s\n", __FUNCTION__);
+    if(!(req->flags & CPROXY_ALLOCATED_BUFFER)){
+        req->buffer = (char*)malloc(REQUEST_BUFFER_SIZE);
+        req->flags |= CPROXY_ALLOCATED_BUFFER;
+    }
+
+    offset = send_sz == -1 ? 0 : send_sz;
+    recv_sz -= offset;
+    memcpy(req->buffer, &buffer[offset], recv_sz);
+    req->buffer_len = recv_sz;
+
+    if(type == CONN_CLIENT){
+        target_conn->flags &= 0xffffff0f;
+        target_conn->flags |= CONN_PENDING;
+        if(setepollevent(client_conn->fd, EPOLLIN | EPOLLET, client_conn) < 0){
+            return -1;
+        }
+
+        if(setepollevent(target_conn->fd, EPOLLOUT, target_conn) < 0){
+            return -1;
+        }
+    }else{
+        client_conn->flags &= 0xffffff0f;
+        client_conn->flags |= CONN_PENDING;
+        if(setepollevent(target_conn->fd, EPOLLIN | EPOLLET, target_conn) < 0){
+            return -1;
+        }
+
+        if(setepollevent(client_conn->fd, EPOLLOUT, client_conn) < 0){
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static inline int sendbuffereddata(int fd, uint32_t* _flags){
+    DEBUG_LOG("%s\n", __FUNCTION__);
+    if(send(fd, req->buffer, req->buffer_len, MSG_NOSIGNAL) < 0){
+        return -1;
+    }
+
+    if(setepollevent(client_conn->fd, EPOLLIN, client_conn) < 0){
+        return -1;
+    }
+
+    if(setepollevent(target_conn->fd, EPOLLIN, target_conn) < 0){
+        return -1;
+    }
+
+    *_flags &= 0xffffff0f;
+    *_flags |= CONN_ACTIVE;
+
+    return 0;
+}
+
 void close_conn(){
-    if(!(target_conn->type & CONN_CLOSED) && target_conn->fd != 0){
+    DEBUG_LOG("%s\n", __FUNCTION__);
+    if(!(target_conn->flags & CONN_CLOSED) && target_conn->fd != 0){
+        DEBUG_LOG("Closing target_conn\n");
         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, target_conn->fd, NULL);
         close(target_conn->fd);
-        target_conn->type |= CONN_CLOSED;
+        target_conn->flags &= 0xffffff0f;
+        target_conn->flags |= CONN_CLOSED;
         target_conn = NULL;
         num_target--;
     }
 
-    if(!(client_conn->type & CONN_CLOSED)){
+    if(!(client_conn->flags & CONN_CLOSED)){
+        DEBUG_LOG("Closing client_conn\n");
         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_conn->fd, NULL);
         close(client_conn->fd);
-        client_conn->type |= CONN_CLOSED; 
+        client_conn->flags &= 0xffffff0f;
+        client_conn->flags |= CONN_CLOSED;
+        DEBUG_LOG("Before memory_pool_release\n");
         memory_pool_release(memory_pool, &client_conn);
+        DEBUG_LOG("After memory_pool_release\n");
         client_conn = NULL;
         num_client--;
     }
 }
 
 int acquire_conn(){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     errno = 0;
     if(req->flags & CPROXY_UDP_SOCK){
         DEBUG_LOG("USING UDP\n");
         socktype = SOCK_DGRAM;
-        ev.events = EPOLLOUT;
     }else{
         DEBUG_LOG("USING TCP\n");
         socktype = SOCK_STREAM;
         req->flags |= CPROXY_TCP_SOCK;
-        ev.events = EPOLLOUT;
     }
+    target_conn->flags &= 0xffffff0f;
+    target_conn->flags |= CONN_PENDING;
     if(req->flags & CPROXY_ADDR_IPV4){
         conn_addr.sin_addr.s_addr = req->ipv4_addr;
         conn_addr.sin_port = req->port;
@@ -126,6 +199,7 @@ int acquire_conn(){
     ERRNO_LOG("Status");
 
 register_conn:
+    ev.events = EPOLLOUT;
     ev.data.ptr = target_conn;
 
     if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, target_conn->fd, &ev) < 0){
@@ -142,30 +216,47 @@ register_conn:
 }
 
 void send_request(){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     errno = 0;
     send(target_conn->fd, req->buffer, req->buffer_len, MSG_NOSIGNAL);
 
-    if(errno == EPIPE || errno == EBADF || errno == ECONNRESET){
+    if(errno == EAGAIN || errno == EPIPE || errno == EBADF || errno == ECONNRESET){
         close_conn();
         return;
     }
 
-    ev.events = EPOLLIN;
-    ev.data.ptr = target_conn;
-
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_MOD, target_conn->fd, &ev) < 0){
+    if(setepollevent(target_conn->fd, EPOLLIN, target_conn) < 0){
         close_conn();
     }
+
+    if(setepollevent(client_conn->fd, EPOLLIN, client_conn) < 0){
+        close_conn();
+    }
+
+    req->buffer_len = 0;
 }
 
-void tunnel_data(int write_fd, int read_fd){
+void tunnel_data(int write_fd, int read_fd, uint32_t type){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     errno = 0;
+
     do{
         recv_sz = recv(read_fd, buffer, BUFFER_SIZE, 0);
-        if(errno == EAGAIN){
+        ERRNO_LOG("recv Status");
+        DEBUG_LOG("recv_sz:%d\n", recv_sz);
+        if(errno == EAGAIN || recv_sz == 0){
             break;
         }
-        send(write_fd, buffer, recv_sz, MSG_NOSIGNAL);
+        send_sz = send(write_fd, buffer, recv_sz, MSG_NOSIGNAL);
+        ERRNO_LOG("send Status");
+        DEBUG_LOG("recv_sz:%d send_sz:%d\n", recv_sz, send_sz);
+        if(errno == EAGAIN || send_sz < recv_sz){
+            if(setwaitfdready(type) < 0){
+                DEBUG_LOG("Failed setwaitfdready()\n");
+                close_conn();
+            }
+            break;
+        }
     }while(recv_sz > 0);
 
     if(recv_sz == 0 || (errno != 0 && errno != EAGAIN)){
@@ -174,20 +265,48 @@ void tunnel_data(int write_fd, int read_fd){
 }
 
 int process_connection(){
-    type = (uint8_t*)events[evt].data.ptr;
-    switch(*type & 0xf){
+    DEBUG_LOG("%s\n", __FUNCTION__);
+    flags = (uint32_t*)events[evt].data.ptr;
+    switch(*flags & 0xf){
         case CONN_CLIENT:
-            DEBUG_LOG("type:%d CONN_CLIENT events:%d\n", *type, events[evt].events);
+            DEBUG_LOG("flags:%d CONN_CLIENT events:%d\n", *flags, events[evt].events);
             client_conn = (conn_data_t*)events[evt].data.ptr;
             target_conn = &client_conn->target;
             req = &client_conn->data.req;
-            if(events[evt].events & (EPOLLERR | EPOLLHUP)){
+
+            if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
+                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP\n");
                 close_conn();
+                return -1;
             }
+
+            if(recv(client_conn->fd, buffer, 
+                    1, MSG_PEEK) == 0){
+                close_conn();
+                return -1;
+            }
+
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
-                tunnel_data(target_conn->fd, client_conn->fd);
+                if(events[evt].events == EPOLLOUT && req->buffer_len > 0){
+                    DEBUG_LOG("exec:sendbuffereddata\n");
+                    if(sendbuffereddata(client_conn->fd, &client_conn->flags) < 0){
+                        close_conn();
+                        return -1;
+                    }
+                    return 0;
+                }
+
+                if(target_conn->flags & CONN_PENDING){
+                    DEBUG_LOG("exec:CONN_PENDING\n");
+                    return 0;
+                }
+
+                DEBUG_LOG("exec:tunnel_data\n");
+                tunnel_data(target_conn->fd, client_conn->fd, CONN_CLIENT);
             }else if((req->flags & CPROXY_REQ_SOCKS5) &&
-                    !(req->flags & CPROXY_ACTIVE_TUNNEL)){
+                    !(req->flags & CPROXY_ACTIVE_TUNNEL) &&
+                    !(target_conn->flags & (CONN_ACTIVE | CONN_PENDING | CONN_CLOSED))){
+                DEBUG_LOG("exec:socks5_handshake\n");
                 if(socks5_handshake(client_conn->fd, req) < 0){
                     close_conn();
                     return -1;
@@ -205,7 +324,8 @@ int process_connection(){
                 if(acquire_conn() < 0){
                     close_conn();
                 }
-            }else{
+            }else if(!(target_conn->flags & (CONN_ACTIVE | CONN_PENDING | CONN_CLOSED))){
+                DEBUG_LOG("exec:initial_proto\n");
                 if((recv_sz = recv(client_conn->fd, buffer, 
                     BUFFER_SIZE, MSG_PEEK)) == 0){
                     close_conn();
@@ -236,23 +356,54 @@ int process_connection(){
                           (uint8_t)((req->ipv4_addr >> 24) & 0xff),
                           ntohs(req->port), req->flags, req->buffer, req->buffer_len);
 
+                if(setepollevent(client_conn->fd, EPOLLIN | EPOLLET, client_conn) < 0){
+                    close_conn();
+                    return -1;
+                }
+
                 if(acquire_conn() < 0){
                     close_conn();
                 }
             }
             break;
         case CONN_TARGET:
-            DEBUG_LOG("type:%d CONN_TARGET event:%d\n", *type, events[evt].events);
+            DEBUG_LOG("flags:%d CONN_TARGET event:%d\n", *flags, events[evt].events);
             target_conn = (target_conn_data_t*)events[evt].data.ptr;
             client_conn = target_conn->client;
             req = &client_conn->data.req;
-            if(events[evt].events & (EPOLLERR | EPOLLHUP)){
+
+            if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
+                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP\n");
                 close_conn();
+                return -1;
             }
+
+            if(recv(target_conn->fd, buffer, 
+                    1, MSG_PEEK) == 0){
+                close_conn();
+                return -1;
+            }
+
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
-                tunnel_data(client_conn->fd, target_conn->fd);
+                if(events[evt].events == EPOLLOUT && req->buffer_len > 0){
+                    DEBUG_LOG("exec:sendbuffereddata\n");
+                    if(sendbuffereddata(target_conn->fd, &target_conn->flags) < 0){
+                        close_conn();
+                        return -1;
+                    }
+                    return 0;
+                }
+
+                if(client_conn->flags & CONN_PENDING){
+                    DEBUG_LOG("exec:CONN_PENDING\n");
+                    return 0;
+                }
+
+                DEBUG_LOG("exec:tunnel_data\n");
+                tunnel_data(client_conn->fd, target_conn->fd, CONN_TARGET);
             }else if((req->flags & (CPROXY_HTTP_TUNNEL | CPROXY_SOCKS5_TUNNEL)) &&
                      !(req->flags & CPROXY_ACTIVE_TUNNEL)){
+                DEBUG_LOG("exec:conn_success\n");
                 errno = 0;
                 if(req->flags & CPROXY_REQ_HTTP){
                     send(client_conn->fd, HTTP_CONN_ESTABLISHED,
@@ -269,32 +420,42 @@ int process_connection(){
                     DEBUG_LOG("CONN_CLIENT - SOCKS5_REQUEST_GRANTED\n");
                 }
 
-                ev.events = EPOLLIN;
-                ev.data.ptr = target_conn;
-            
-                if(epoll_ctl(epoll_fd, EPOLL_CTL_MOD, target_conn->fd, &ev) < 0){
-                    ERRNO_LOG("Failed epoll_ctl() for connected target connection");
+                if(setepollevent(target_conn->fd, EPOLLIN, target_conn) < 0){
                     close_conn();
-                    return -1;
                 }
 
+                if(setepollevent(client_conn->fd, EPOLLIN, client_conn) < 0){
+                    close_conn();
+                }
+
+                target_conn->flags &= 0xffffff0f;
+                target_conn->flags |= CONN_ACTIVE;
                 req->flags |= CPROXY_ACTIVE_TUNNEL;
             }else if((req->flags & CPROXY_REQ_SOCKS5) && 
                      (req->flags & CPROXY_UDP_SOCK)){
                 DEBUG_LOG("SOCKS5 UDP CONN\n");
-            }else if(events[evt].events == EPOLLOUT){
+            }else if(events[evt].events & EPOLLOUT){
+                DEBUG_LOG("exec:send_request\n");
                 send_request();
+                target_conn->flags &= 0xffffff0f;
+                target_conn->flags |= CONN_ACTIVE;
                 req->flags |= CPROXY_ACTIVE_TUNNEL;
             }
             break;
         default:
-            DEBUG_LOG("Unknown type:%d\n", *type);
+            if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
+                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP\n");
+                close_conn();
+                return -1;
+            }
+            DEBUG_LOG("Unknown flags:%d event:%d\n", *flags, events[evt].events);
             break;
     }
     return 0;
 }
 
 int accept_new_connection(){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     if(num_client == MAX_CONN){
         ERROR_LOG("Maximum number of connection hit num_client:%d max:%d\n", num_client, MAX_CONN);
         return -1;
@@ -319,6 +480,7 @@ int accept_new_connection(){
     }
 
     client_conn->fd = conn_fd;
+    client_conn->flags |= CONN_ACTIVE;
     ev.events = EPOLLIN;
     ev.data.ptr = client_conn;
 
@@ -339,6 +501,7 @@ int accept_new_connection(){
 }
 
 void run_event_loop(){
+    DEBUG_LOG("%s\n", __FUNCTION__);
     for(;;){
         errno = 0;
         DEBUG_LOG("Calling epoll_wait\n");
@@ -375,8 +538,8 @@ void run_event_loop(){
                 }
 
                 client_conn = &memory_pool->block[dns_resp.id];
-                if(client_conn->type == 0){
-                    ERRNO_LOG("Failed dns - client_conn->type = 0\n");
+                if(client_conn->flags == 0){
+                    ERRNO_LOG("Failed dns - client_conn->flags = 0\n");
                     continue;
                 }
 
