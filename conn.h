@@ -6,8 +6,9 @@
 #define CONN_CLIENT 0x1
 #define CONN_TARGET 0x2
 
-#define CONN_ONCE (0x1 << 4)
-#define CONN_CLOSED (0x1 << 5)
+#define CONN_CLOSED (0x1 << 4)
+#define CONN_PENDING (0x1 << 5)
+#define CONN_ACTIVE (0x1 << 6)
 
 struct target_conn_data_t;
 struct conn_data_t;
