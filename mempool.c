@@ -29,8 +29,8 @@ int memory_pool_get(memory_pool_t* memory_pool, conn_data_t** conn_data){
     }
     *conn_data = memory_pool->head;
     memory_pool->head = memory_pool->head->next;
-    (*conn_data)->type = CONN_CLIENT;
-    (*conn_data)->target.type = CONN_TARGET;
+    (*conn_data)->flags = CONN_CLIENT;
+    (*conn_data)->target.flags = CONN_TARGET;
     (*conn_data)->target.client = *conn_data;
     (*conn_data)->next = NULL;
     memory_pool->size++;
@@ -46,7 +46,7 @@ int memory_pool_release(memory_pool_t* memory_pool, conn_data_t** conn_data){
     memory_pool->tail->next = *conn_data;
     memory_pool->tail = *conn_data;
     memory_pool->tail->next = NULL;
-    memory_pool->tail->type = 0;
+    memory_pool->tail->flags = 0;
     memory_pool->tail->fd = 0;
     memset(&memory_pool->tail->data, 0, sizeof(memory_pool->tail->data));
     memset(&memory_pool->tail->target, 0, sizeof(target_conn_data_t));

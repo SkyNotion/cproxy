@@ -14,13 +14,13 @@ struct target_conn_data_t;
 struct conn_data_t;
 
 typedef struct target_conn_data_t {
-    uint8_t type;
+    uint32_t flags;
     int fd;
     struct conn_data_t* client;
 } target_conn_data_t;
 
 typedef struct conn_data_t {
-    uint8_t type;
+    uint32_t flags;
     uint16_t index;
     int fd;
     union {
