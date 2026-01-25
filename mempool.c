@@ -48,6 +48,10 @@ int memory_pool_release(memory_pool_t* memory_pool, conn_data_t** conn_data){
     memory_pool->tail->next = NULL;
     memory_pool->tail->flags = 0;
     memory_pool->tail->fd = 0;
+    if((memory_pool->tail->data.req.flags & CPROXY_ALLOCATED_BUFFER) &&
+        memory_pool->tail->data.req.buffer != NULL){
+        free(memory_pool->tail->data.req.buffer);
+    }
     memset(&memory_pool->tail->data, 0, sizeof(memory_pool->tail->data));
     memset(&memory_pool->tail->target, 0, sizeof(target_conn_data_t));
     memory_pool->size--;

@@ -18,17 +18,21 @@
 #define CPROXY_SOCKS5_INITIAL_AUTH (0x1 << 16)
 #define CPROXY_SOCKS5_TARGET_CONN (0x1 << 17)
 
+#define CPROXY_ALLOCATED_BUFFER (0x1 << 18)
+
+#define REQUEST_BUFFER_SIZE (8 * 1024)
+
 typedef struct {
     char host[263];
-    uint8_t host_len;
+    uint16_t host_len;
     union {
         uint32_t ipv4_addr;
         uint8_t ipv6_addr[16];
     };
     uint16_t port;
     uint32_t flags;
-    char buffer[256];
-    uint8_t buffer_len;
+    char* buffer;
+    uint32_t buffer_len;
 } cproxy_request_t;
 
 #endif
