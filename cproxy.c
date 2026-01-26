@@ -417,10 +417,6 @@ int process_connection(){
                     close_conn();
                 }
 
-                if(setepollevent(client_conn->fd, EPOLLIN, client_conn) < 0){
-                    close_conn();
-                }
-
                 target_conn->flags &= 0xffffff0f;
                 target_conn->flags |= CONN_ACTIVE;
                 req->flags |= CPROXY_ACTIVE_TUNNEL;
