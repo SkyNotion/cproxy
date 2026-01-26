@@ -275,13 +275,7 @@ int process_connection(){
             req = &client_conn->data.req;
 
             if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
-                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP\n");
-                close_conn();
-                return -1;
-            }
-
-            if(recv(client_conn->fd, buffer, 
-                    1, MSG_PEEK) == 0){
+                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP | EPOLLRDHUP\n");
                 close_conn();
                 return -1;
             }
@@ -373,13 +367,7 @@ int process_connection(){
             req = &client_conn->data.req;
 
             if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
-                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP\n");
-                close_conn();
-                return -1;
-            }
-
-            if(recv(target_conn->fd, buffer, 
-                    1, MSG_PEEK) == 0){
+                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP | EPOLLRDHUP\n");
                 close_conn();
                 return -1;
             }
