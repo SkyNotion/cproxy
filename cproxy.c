@@ -285,7 +285,7 @@ int process_connection(){
             }
 
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
-                if(events[evt].events == EPOLLOUT && req->buffer_len > 0){
+                if((events[evt].events & EPOLLOUT) && req->buffer_len > 0){
                     DEBUG_LOG("exec:sendbuffereddata\n");
                     if(sendbuffereddata(client_conn->fd, &client_conn->flags) < 0){
                         close_conn();
@@ -377,7 +377,7 @@ int process_connection(){
             }
 
             if(req->flags & CPROXY_ACTIVE_TUNNEL){
-                if(events[evt].events == EPOLLOUT && req->buffer_len > 0){
+                if((events[evt].events & EPOLLOUT) && req->buffer_len > 0){
                     DEBUG_LOG("exec:sendbuffereddata\n");
                     if(sendbuffereddata(target_conn->fd, &target_conn->flags) < 0){
                         close_conn();
