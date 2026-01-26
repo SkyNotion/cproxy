@@ -257,7 +257,7 @@ void tunnel_data(int write_fd, int read_fd, uint32_t type){
         if(errno == EAGAIN || send_sz < recv_sz){
             if(setwaitfdready(type) < 0){
                 DEBUG_LOG("Failed setwaitfdready()\n");
-                close_conn();
+                recv_sz = 0;
             }
             break;
         }
@@ -402,6 +402,7 @@ int process_connection(){
                         CONSTSTRLEN(HTTP_CONN_ESTABLISHED), MSG_NOSIGNAL);
                     if(errno == EPIPE){
                         close_conn();
+                        return -1;
                     }
                     DEBUG_LOG("CONN_CLIENT - HTTP_CONN_ESTABLISHED\n");
                 }else if(req->flags & CPROXY_REQ_SOCKS5){
