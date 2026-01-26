@@ -431,11 +431,6 @@ int process_connection(){
             }
             break;
         default:
-            if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
-                DEBUG_LOG("exec:EPOLLERR | EPOLLHUP\n");
-                close_conn();
-                return -1;
-            }
             DEBUG_LOG("Unknown flags:%d event:%d\n", *flags, events[evt].events);
             break;
     }
