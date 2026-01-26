@@ -194,9 +194,13 @@ int acquire_conn(){
     }
 
     connect(target_conn->fd, addr, conn_addr_len);
-    DEBUG_LOG("Attempt connection\n");
+    DEBUG_LOG("Attempt connection fd:%d\n", target_conn->fd);
 
     ERRNO_LOG("Status");
+
+    if(errno != EINPROGRESS){
+        return -1;
+    }
 
 register_conn:
     ev.events = EPOLLOUT;
