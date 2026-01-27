@@ -222,7 +222,10 @@ register_conn:
 int send_request(){
     DEBUG_LOG("%s\n", __FUNCTION__);
     errno = 0;
-    send(target_conn->fd, req->buffer, req->buffer_len, MSG_NOSIGNAL);
+    if(send(target_conn->fd, req->buffer,
+            req->buffer_len, MSG_NOSIGNAL) != req->buffer_len){
+        return -1;
+    }
 
     if(errno == EAGAIN || errno == EPIPE || errno == EBADF || errno == ECONNRESET){
         return -1;
