@@ -219,25 +219,21 @@ register_conn:
     return 0;
 }
 
-void send_request(){
+int send_request(){
     DEBUG_LOG("%s\n", __FUNCTION__);
     errno = 0;
     send(target_conn->fd, req->buffer, req->buffer_len, MSG_NOSIGNAL);
 
     if(errno == EAGAIN || errno == EPIPE || errno == EBADF || errno == ECONNRESET){
-        close_conn();
-        return;
+        return -1;
     }
 
     if(setepollevent(target_conn->fd, EPOLLIN, target_conn) < 0){
-        close_conn();
-    }
-
-    if(setepollevent(client_conn->fd, EPOLLIN, client_conn) < 0){
-        close_conn();
+        return -1;
     }
 
     req->buffer_len = 0;
+    return 0;
 }
 
 void tunnel_data(int write_fd, int read_fd, uint32_t type){
@@ -415,6 +411,7 @@ int process_connection(){
 
                 if(setepollevent(target_conn->fd, EPOLLIN, target_conn) < 0){
                     close_conn();
+                    return -1;
                 }
 
                 target_conn->flags &= 0xffffff0f;
@@ -425,7 +422,10 @@ int process_connection(){
                 DEBUG_LOG("SOCKS5 UDP CONN\n");
             }else if(events[evt].events & EPOLLOUT){
                 DEBUG_LOG("exec:send_request\n");
-                send_request();
+                if(send_request() < 0){
+                    close_conn();
+                    return -1;
+                }
                 target_conn->flags &= 0xffffff0f;
                 target_conn->flags |= CONN_ACTIVE;
                 req->flags |= CPROXY_ACTIVE_TUNNEL;
