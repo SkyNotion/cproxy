@@ -235,6 +235,10 @@ int send_request(){
         return -1;
     }
 
+    if(setepollevent(client_conn->fd, EPOLLIN, client_conn) < 0){
+        return -1;
+    }
+
     req->buffer_len = 0;
     return 0;
 }
@@ -353,9 +357,11 @@ int process_connection(){
                           (uint8_t)((req->ipv4_addr >> 24) & 0xff),
                           ntohs(req->port), req->flags, req->buffer, req->buffer_len);
 
-                if(setepollevent(client_conn->fd, EPOLLIN | EPOLLET, client_conn) < 0){
-                    close_conn();
-                    return -1;
+                if(!(req->flags & CPROXY_HTTP_TUNNEL)){
+                    if(setepollevent(client_conn->fd, EPOLLIN | EPOLLET, client_conn) < 0){
+                        close_conn();
+                        return -1;
+                    }
                 }
 
                 if(acquire_conn() < 0){
