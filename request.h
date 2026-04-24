@@ -18,8 +18,6 @@
 #define CPROXY_SOCKS5_INITIAL_AUTH (0x1 << 16)
 #define CPROXY_SOCKS5_TARGET_CONN (0x1 << 17)
 
-#define CPROXY_ALLOCATED_BUFFER (0x1 << 18)
-
 #define REQUEST_BUFFER_SIZE (8 * 1024)
 
 typedef struct {
@@ -33,6 +31,9 @@ typedef struct {
     uint32_t flags;
     char* buffer;
     uint32_t buffer_len;
+    uint32_t buffer_max_size;
+    int temp_fd;
+    uint32_t temp_len;
 } cproxy_request_t;
 
 #endif

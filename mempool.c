@@ -48,7 +48,7 @@ int memory_pool_release(memory_pool_t* memory_pool, conn_data_t** conn_data){
     memory_pool->tail->next = NULL;
     memory_pool->tail->flags = 0;
     memory_pool->tail->fd = 0;
-    if((memory_pool->tail->data.req.flags & CPROXY_ALLOCATED_BUFFER) &&
+    if((memory_pool->tail->data.req.buffer_max_size > 0) &&
         memory_pool->tail->data.req.buffer != NULL){
         free(memory_pool->tail->data.req.buffer);
     }

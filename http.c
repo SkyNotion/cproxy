@@ -95,8 +95,10 @@ static inline int parse_http_request_string(cproxy_request_t* req){
                     return -1;
                 }
                 if(strncmp(&buffer[start_pos], HTTP_REQUEST_CONNECT, byte_count) != 0){
-                    req->buffer = (char*)malloc(REQUEST_BUFFER_SIZE);
-                    req->flags |= CPROXY_ALLOCATED_BUFFER;
+                    if((req->buffer = (char*)malloc(REQUEST_BUFFER_SIZE)) == NULL){
+                        return -1;
+                    }
+                    req->buffer_max_size = REQUEST_BUFFER_SIZE;
                     memcpy(req->buffer, &buffer[start_pos], byte_count);
                     req->buffer[byte_count] = DELIMETER_SPACE;
                     req->buffer_len = byte_count;
