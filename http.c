@@ -90,7 +90,7 @@ static inline int parse_http_request_string(cproxy_request_t* req){
     do{
         switch(buffer[inc]){
             case DELIMETER_SPACE:
-                req->buffer[0].buffer_len = byte_count = inc++ - start_pos;
+                byte_count = inc++ - start_pos;
                 if(byte_count > 7){
                     return -1;
                 }

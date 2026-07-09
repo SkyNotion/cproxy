@@ -84,8 +84,14 @@ static inline int set_wait_fd_ready(uint32_t type, uint32_t status, uint32_t eve
 
 static inline int store_buffered_data(int data_sz, int offset){
     DEBUG_LOG("%s\n", __FUNCTION__);
+    if(data_sz <= 0){
+        return 0;
+    }
     ERRNO_LOG("Storing data");
-    DEBUG_LOG("Storing data data_sz:%d offset:%d\n", data_sz, offset);
+    DEBUG_LOG("Storing data data_sz:%d offset:%d "
+              "req->cursor:%d req->buffer_len:%d req->buffer_max_size:%d\n",
+              data_sz, offset, req_buffer->cursor, req_buffer->buffer_len,
+              req_buffer->buffer_max_size);
     data_sz -= offset;
     if((req_buffer->buffer_max_size - req_buffer->buffer_len) < (uint32_t)data_sz){
         if(req_buffer->buffer_max_size == REQUEST_BUFFER_MAX_SIZE){
@@ -106,7 +112,9 @@ static inline int store_buffered_data(int data_sz, int offset){
 static inline int check_error_events(){
     DEBUG_LOG("%s\n", __FUNCTION__);
     if(events[evt].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)){
-        DEBUG_LOG("exec:EPOLLERR | EPOLLHUP | EPOLLRDHUP\n");
+        DEBUG_LOG("exec:EPOLLERR | EPOLLHUP | EPOLLRDHUP events[evt].events:%d\n",
+                    events[evt].events);
+        ERRNO_LOG("epoll error");
         return -1;
     }
     return 0;
@@ -232,7 +240,8 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
             if(errno == EAGAIN || recv_sz == 0){
                 break;
             }
-    
+
+            DEBUG_LOG("-storing buf data -> pending conn\n");
             if(store_buffered_data(recv_sz, 0) < 0){
                 return -1;
             }
@@ -263,7 +272,7 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
             block_sz = MIN(BUFFER_SIZE, req_buffer->buffer_len - req_buffer->cursor);
             send_sz = send(write_fd, &req_buffer->data[req_buffer->cursor], block_sz, MSG_NOSIGNAL);
             req_buffer->cursor += send_sz;
-            if(errno == EAGAIN){
+            if(errno == EAGAIN || (send_sz < block_sz)){
                 if(set_wait_fd_ready(pair_type, CONN_PENDING, EPOLLOUT) < 0){
                     return -1;
                 }
@@ -273,6 +282,7 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
         }while((req_buffer->buffer_len - req_buffer->cursor) > 0);
 
         if((req_buffer->buffer_len - req_buffer->cursor) > 0){
+            DEBUG_LOG("--storing buf data -> appending\n");
             if(store_buffered_data(recv_sz, 0) < 0){
                 return -1;
             }
@@ -293,10 +303,13 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
 
     errno = 0;
     send_sz = send(write_fd, buffer, recv_sz, MSG_NOSIGNAL);
-    if(errno == EAGAIN || send_sz < recv_sz){
+    if(errno == EAGAIN || (send_sz < recv_sz)){
         if(set_wait_fd_ready(pair_type, CONN_PENDING, EPOLLOUT) < 0){
             return -1;
         }
+
+        DEBUG_LOG("--storing buf data recv_sz:%d send_sz:%d (send_sz (rem) recv_sz):%d\n",
+                    recv_sz, send_sz, (send_sz % recv_sz));
 
         if(store_buffered_data(recv_sz, (send_sz % recv_sz)) < 0){
             return -1;
@@ -315,11 +328,14 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
 
         errno = 0;
         send_sz = send(write_fd, buffer, recv_sz, MSG_NOSIGNAL);
-        if(errno == EAGAIN || send_sz < recv_sz){
+        if(errno == EAGAIN || (send_sz < recv_sz)){
             if(set_wait_fd_ready(pair_type, CONN_PENDING, EPOLLOUT) < 0){
                 return -1;
             }
-    
+            
+            DEBUG_LOG("---storing buf data recv_sz:%d send_sz:%d (send_sz (rem) recv_sz):%d\n",
+                        recv_sz, send_sz, (send_sz % recv_sz));
+
             if(store_buffered_data(recv_sz, (send_sz % recv_sz)) < 0){
                 return -1;
             }
