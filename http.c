@@ -68,10 +68,10 @@ static inline int parse_http_request_path(cproxy_request_t* req){
                 if(req->flags & CPROXY_HTTP_TUNNEL){
                     return 0;
                 }
-                memcpy(&req->buffer[++req->buffer_len], &buffer[start_pos], byte_count);
-                req->buffer_len += byte_count;
-                memcpy(&req->buffer[req->buffer_len], HTTP_1_1_SUFFIX, CONSTSTRLEN(HTTP_1_1_SUFFIX));
-                req->buffer_len += CONSTSTRLEN(HTTP_1_1_SUFFIX);
+                memcpy(&req->buffer[0].data[++req->buffer[0].buffer_len], &buffer[start_pos], byte_count);
+                req->buffer[0].buffer_len += byte_count;
+                memcpy(&req->buffer[0].data[req->buffer[0].buffer_len], HTTP_1_1_SUFFIX, CONSTSTRLEN(HTTP_1_1_SUFFIX));
+                req->buffer[0].buffer_len += CONSTSTRLEN(HTTP_1_1_SUFFIX);
                 return 0;
             case DELIMETER_CR:
                 return -1;
@@ -85,23 +85,23 @@ static inline int parse_http_request_path(cproxy_request_t* req){
 
 static inline int parse_http_request_string(cproxy_request_t* req){
     DEBUG_LOG("%s\n", __FUNCTION__);
-    req->buffer_len = 0;
+    req->buffer[0].buffer_len = 0;
     parsed = start_pos = 0;
     do{
         switch(buffer[inc]){
             case DELIMETER_SPACE:
-                req->buffer_len = byte_count = inc++ - start_pos;
+                req->buffer[0].buffer_len = byte_count = inc++ - start_pos;
                 if(byte_count > 7){
                     return -1;
                 }
                 if(strncmp(&buffer[start_pos], HTTP_REQUEST_CONNECT, byte_count) != 0){
-                    if((req->buffer = (char*)malloc(REQUEST_BUFFER_SIZE)) == NULL){
+                    if((req->buffer[0].data = (char*)malloc(REQUEST_BUFFER_INCR_SIZE)) == NULL){
                         return -1;
                     }
-                    req->buffer_max_size = REQUEST_BUFFER_SIZE;
-                    memcpy(req->buffer, &buffer[start_pos], byte_count);
-                    req->buffer[byte_count] = DELIMETER_SPACE;
-                    req->buffer_len = byte_count;
+                    req->buffer[0].buffer_max_size = REQUEST_BUFFER_INCR_SIZE;
+                    memcpy(req->buffer[0].data, &buffer[start_pos], byte_count);
+                    req->buffer[0].data[byte_count] = DELIMETER_SPACE;
+                    req->buffer[0].buffer_len = byte_count;
                 }else{
                     req->flags |= CPROXY_HTTP_TUNNEL;
                 }
@@ -197,7 +197,7 @@ static inline int get_addr_type(cproxy_request_t* req){
                 }
                 total_blocks++;
                 dot_count = inc - pos;
-                memset(ipv6_block, 0x30, sizeof(ipv6_block));
+                memset(ipv6_block, ASCII_ZERO_HEX, sizeof(ipv6_block));
                 memcpy(&ipv6_block[4 - dot_count], &buffer[pos], dot_count);
                 parse_ipv6_hex(req);
                 byte_count += 2;
@@ -214,7 +214,7 @@ static inline int get_addr_type(cproxy_request_t* req){
            buffer[inc - 1] != DELIMETER_COLON){
             total_blocks++;
             dot_count = inc - pos;
-            memset(ipv6_block, 0x30, sizeof(ipv6_block));
+            memset(ipv6_block, ASCII_ZERO_HEX, sizeof(ipv6_block));
             memcpy(&ipv6_block[4 - dot_count], &buffer[pos], dot_count);
             parse_ipv6_hex(req);
         }
@@ -290,14 +290,14 @@ static inline int parse_http_request_headers(cproxy_request_t* req){
                 }
 
                 if(parsed == 1 && !(req->flags & CPROXY_HTTP_TUNNEL)){
-                    memcpy(&req->buffer[req->buffer_len], header_buffer, header_buffer_len);
-                    req->buffer_len += header_buffer_len;
-                    req->buffer[req->buffer_len++] = DELIMETER_COLON;
-                    req->buffer[req->buffer_len++] = DELIMETER_SPACE;
-                    memcpy(&req->buffer[req->buffer_len], &buffer[start_pos], byte_count);
-                    req->buffer_len += byte_count;
-                    req->buffer[req->buffer_len++] = DELIMETER_CR;
-                    req->buffer[req->buffer_len++] = DELIMETER_LF;
+                    memcpy(&req->buffer[0].data[req->buffer[0].buffer_len], header_buffer, header_buffer_len);
+                    req->buffer[0].buffer_len += header_buffer_len;
+                    req->buffer[0].data[req->buffer[0].buffer_len++] = DELIMETER_COLON;
+                    req->buffer[0].data[req->buffer[0].buffer_len++] = DELIMETER_SPACE;
+                    memcpy(&req->buffer[0].data[req->buffer[0].buffer_len], &buffer[start_pos], byte_count);
+                    req->buffer[0].buffer_len += byte_count;
+                    req->buffer[0].data[req->buffer[0].buffer_len++] = DELIMETER_CR;
+                    req->buffer[0].data[req->buffer[0].buffer_len++] = DELIMETER_LF;
                 }
 
                 colon_count = 0;
@@ -362,13 +362,13 @@ static inline int parse_http_request_headers(cproxy_request_t* req){
     }
 
     if(!(req->flags & CPROXY_HTTP_TUNNEL)){
-        req->buffer[req->buffer_len++] = DELIMETER_CR;
-        req->buffer[req->buffer_len++] = DELIMETER_LF;
+        req->buffer[0].data[req->buffer[0].buffer_len++] = DELIMETER_CR;
+        req->buffer[0].data[req->buffer[0].buffer_len++] = DELIMETER_LF;
     }
 
     if(inc < recv_sz){
-        memcpy(&req->buffer[req->buffer_len], &buffer[inc], recv_sz - inc);
-        req->buffer_len += (recv_sz - inc);
+        memcpy(&req->buffer[0].data[req->buffer[0].buffer_len], &buffer[inc], recv_sz - inc);
+        req->buffer[0].buffer_len += (recv_sz - inc);
     }
 
     section = HTTP_SECTION_DONE;

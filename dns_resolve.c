@@ -53,7 +53,7 @@ int send_dns_req(uint16_t id, const char* host, uint8_t host_len){
             inc++;
         }
 
-        if(host[inc] == 0x2e || inc == host_len){
+        if(host[inc] == DELIMETER_DOT || inc == host_len){
             sz = inc - lpos;
             buffer[pos++] = (char)sz;
             memcpy(&buffer[pos], &host[lpos], sz);

@@ -10,6 +10,9 @@
 #define CONN_PENDING (0x1 << 5)
 #define CONN_ACTIVE (0x1 << 6)
 
+#define CONN_EVENT_EPOLLIN (0x1 << 8)
+#define CONN_EVENT_EPOLLOUT (0x1 << 9)
+
 struct target_conn_data_t;
 struct conn_data_t;
 

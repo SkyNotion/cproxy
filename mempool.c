@@ -48,9 +48,13 @@ int memory_pool_release(memory_pool_t* memory_pool, conn_data_t** conn_data){
     memory_pool->tail->next = NULL;
     memory_pool->tail->flags = 0;
     memory_pool->tail->fd = 0;
-    if((memory_pool->tail->data.req.buffer_max_size > 0) &&
-        memory_pool->tail->data.req.buffer != NULL){
-        free(memory_pool->tail->data.req.buffer);
+    if((memory_pool->tail->data.req.buffer[0].buffer_max_size > 0) &&
+        memory_pool->tail->data.req.buffer[0].data != NULL){
+        free(memory_pool->tail->data.req.buffer[0].data);
+    }
+    if((memory_pool->tail->data.req.buffer[1].buffer_max_size > 0) &&
+        memory_pool->tail->data.req.buffer[1].data != NULL){
+        free(memory_pool->tail->data.req.buffer[1].data);
     }
     memset(&memory_pool->tail->data, 0, sizeof(memory_pool->tail->data));
     memset(&memory_pool->tail->target, 0, sizeof(target_conn_data_t));

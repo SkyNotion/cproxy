@@ -19,9 +19,18 @@
 #define CPROXY_SOCKS5_TARGET_CONN (0x1 << 17)
 
 #define REQUEST_BUFFER_SIZE (8 * 1024)
+#define REQUEST_BUFFER_INCR_SIZE (32 * 1024)
+#define REQUEST_BUFFER_MAX_SIZE (128 * 1024)
 
 typedef struct {
-    char host[263];
+    char* data;
+    uint32_t cursor;
+    uint32_t buffer_len;
+    uint32_t buffer_max_size;
+} cproxy_request_data_t;
+
+typedef struct {
+    char host[256]; // 255 hostname, 1 byte null term char
     uint16_t host_len;
     union {
         uint32_t ipv4_addr;
@@ -29,11 +38,7 @@ typedef struct {
     };
     uint16_t port;
     uint32_t flags;
-    char* buffer;
-    uint32_t buffer_len;
-    uint32_t buffer_max_size;
-    int temp_fd;
-    uint32_t temp_len;
+    cproxy_request_data_t buffer[2];
 } cproxy_request_t;
 
 #endif

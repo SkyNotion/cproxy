@@ -21,7 +21,7 @@ int socks5_handshake(int fd, cproxy_request_t* req){
                errno == ECONNRESET){
                 return -1;
             }
-            req->flags &= 0xfff0ffff;
+            req->flags &= ~0xf0000;
             req->flags |= CPROXY_SOCKS5_TARGET_CONN;
             req->flags |= CPROXY_REQ_SOCKS5;
             break;
@@ -60,7 +60,7 @@ int socks5_handshake(int fd, cproxy_request_t* req){
                 default:
                     return -1;
             }
-            req->flags &= 0xfff0ffff;
+            req->flags &= ~0xf0000;
             req->flags |= CPROXY_SOCKS5_TUNNEL;
             if((uint8_t)buffer[1] == SOCKS5_UDP_CONN){
                 req->flags |= CPROXY_UDP_SOCK;

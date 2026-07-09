@@ -13,15 +13,6 @@
 #define HTTP_SECTION_HEADERS 2
 #define HTTP_SECTION_BODY 3
 
-#define DELIMETER_SPACE '\x20'
-#define DELIMETER_CR '\x0d'
-#define DELIMETER_LF '\x0a'
-#define DELIMETER_COLON '\x3a'
-#define DELIMETER_FORWARDSLASH '\x2f'
-#define DELIMETER_DOT '\x2e'
-#define DELIMETER_OPEN_SQUARE_BRACKET '\x5b'
-#define DELIMETER_CLOSE_SQUARE_BRACKET '\x5d'
-
 #define HTTP_REQUEST_CONNECT "CONNECT"
 
 #define HTTP_HEADER_STR_HOST "host"
@@ -31,6 +22,8 @@
 #define HTTP_HEADER_HOST 1
 #define HTTP_HEADER_PROXY_AUTHORIZATION 2
 #define HTTP_HEADER_PROXY_CONNECTION 3
+
+#define ASCII_ZERO_HEX 0x30
 
 int parse_http_request(int fd, cproxy_request_t* req);
 

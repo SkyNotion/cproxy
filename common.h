@@ -18,6 +18,16 @@
 #define MAX_CONN (2 * 1024)
 
 #define CONSTSTRLEN(s) ((sizeof(s)/sizeof(char)) - 1)
+#define MIN(a, b) (a < b ? a : b)
+
+#define DELIMETER_SPACE '\x20'
+#define DELIMETER_CR '\x0d'
+#define DELIMETER_LF '\x0a'
+#define DELIMETER_COLON '\x3a'
+#define DELIMETER_FORWARDSLASH '\x2f'
+#define DELIMETER_DOT '\x2e'
+#define DELIMETER_OPEN_SQUARE_BRACKET '\x5b'
+#define DELIMETER_CLOSE_SQUARE_BRACKET '\x5d'
 
 #ifdef _DEBUG
     #define DEBUG_LOG(...) fprintf(cproxy_output, __VA_ARGS__)

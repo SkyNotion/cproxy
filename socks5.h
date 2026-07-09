@@ -4,6 +4,8 @@
 #include "common.h"
 #include "request.h"
 
+#define SOCKS5_VERSION_NUMBER 0x05
+
 #define SOCKS5_BUFFER_SIZE 280
 
 #define SOCKS5_IPV4_ADDRESS 0x01
