@@ -272,6 +272,8 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
             block_sz = MIN(BUFFER_SIZE, req_buffer->buffer_len - req_buffer->cursor);
             send_sz = send(write_fd, &req_buffer->data[req_buffer->cursor], block_sz, MSG_NOSIGNAL);
             req_buffer->cursor += send_sz;
+            DEBUG_LOG("Sending buffered data buffer_len:%d cursor:%d buffer_max_size:%d send_sz:%d block_sz:%d\n",
+                    req_buffer->buffer_len, req_buffer->cursor, req_buffer->buffer_max_size, send_sz, block_sz);
             if(errno == EAGAIN || (send_sz < block_sz)){
                 if(set_wait_fd_ready(pair_type, CONN_PENDING, EPOLLOUT) < 0){
                     return -1;
@@ -298,6 +300,10 @@ int tunnel_data(int read_fd, int write_fd, uint8_t type, uint8_t pair_type, uint
         DEBUG_LOG("Done sending buffered data buffer_len:%d cursor:%d buffer_max_size:%d\n",
                     req_buffer->buffer_len, req_buffer->cursor, req_buffer->buffer_max_size);
     }else if(sock_status == EAGAIN){
+        return 0;
+    }
+
+    if(recv_sz <= 0){
         return 0;
     }
 
