@@ -4,6 +4,7 @@
 #include "common.h"
 
 #define DNS_ADDRESS "8.8.8.8" // Google's public dns
+//#define DNS_ADDRESS "1.1.1.1" // Cloudflare's public dns
 
 #define DNS_BUFFER_SIZE 512
 
